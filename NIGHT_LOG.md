@@ -206,3 +206,100 @@ App breakdown: `TaskMappersTest` 12, `TimeParsingTest` 13.
   exercised only through the mapper round-trip tests, not against a real
   SQLite instance — that wants an instrumented test and a device, which this
   machine does not have. Noted as a gap for Phase 9's hardening pass.
+
+---
+
+## Phase 2 — Goals, Lessons, Sub-tasks & Progress Tracking
+
+**Status: COMPLETE** (build passes, 109 tests pass, committed)
+
+### Deliverables checklist
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 2.1 | UI to create a Goal: title, deadline, manual importance, total lesson count | **PASS** | `GoalEditorDialog` — all four fields, plus a consequence-type picker (`SOFT_GOAL` / `IRL_BINDING`) since Section 3 has the field and Phase 5 needs it set |
+| 2.2 | Each lesson defines its own sub-tasks independently | **PASS** | `SubTaskEditorDialog` is opened per lesson; nothing copies structure between lessons |
+| 2.3 | Zero, one, or several sub-tasks per lesson | **PASS** | Tested by `lessons in one goal may have wholly different sub-task structures` (0/1/3 sub-tasks in one goal) |
+| 2.4 | Sub-tasks freely named | **PASS** | `SubTask.type` and `.title` are free text; previously-used types are offered as chips but never enforced |
+| 2.5 | No requirement that lessons share a structure | **PASS** | See 2.3 — no template code exists to remove |
+| 2.6 | A lesson with zero sub-tasks is completed by marking the lesson done | **PASS** | `Lesson.derivedStatus()`; the lesson checkbox is enabled only when `hasNoSubTasks` |
+| 2.7 | Mark sub-tasks done | **PASS** | Checkbox per sub-task in `GoalDetailScreen`, stamping `completedAt` |
+| 2.8 | Mark whole lessons done when there are no sub-tasks | **PASS** | Lesson checkbox, enabled only for bare lessons |
+| 2.9 | See lesson completion | **PASS** | Per-lesson subtitle: done/total, percent, derived status |
+| 2.10 | Goal-level rollup `lessons_completed / total_lessons` | **PASS** | `computeGoalProgress`; shown on the goal row and the detail header |
+| 2.11 | Simple pace view: comfortable pace vs. actual velocity | **PASS** | `computePace` produces `PaceSnapshot`; rendered in the goal detail "Pace" section |
+| 2.12 | Pace scoped per sub-task type where sub-tasks exist | **PASS** | `computePace` groups by `SubTask.type`; bare lessons contribute nothing |
+| 2.13 | No automatic scheduling of goal tasks into free time | **PASS** | Nothing calls `computeFreeTimeMap` with goal work; no allocator exists yet |
+
+### Constraints checklist
+
+| Constraint | Result | Notes |
+| --- | --- | --- |
+| Do not build a cross-lesson template system | **PASS** | There is no template type, no "apply to all lessons" action, and no copy path between lessons. Each `SubTaskEditorDialog` writes one sub-task to one lesson. |
+| Sub-task structure entered freely each time | **PASS** | Same |
+| Sub-task types simple and user-defined | **PASS** | `type` is a `String`, not an enum. Previously-used values appear as tappable suggestions, which is a convenience, not a constraint — any new string is accepted. |
+| Not hardcoded categories | **PASS** | Nothing in the engine or the app matches on a fixed set of type names |
+
+### Test results
+
+| Suite | Tests | Passed | Failed |
+| --- | --- | --- | --- |
+| `:scheduling-engine:test` | 71 | 71 | 0 |
+| `:app:testDebugUnitTest` | 38 | 38 | 0 |
+| **Total** | **109** | **109** | **0** |
+
+New this phase: `ProgressTest` 26 (engine), `GoalMappersTest` 13 (app).
+
+One test failed on first run — `lessons in one goal need not share a sub-task
+structure` expected 3 completed sub-tasks where the fixture only has 2. That
+was my arithmetic error in the test, not a defect in the code; the expectation
+was corrected and the assertion now documents which lesson contributes what.
+
+### Decisions I had to make (not specified in PROJECT_PLAN.md)
+
+1. **`completedAt` added to `SubTask` and `Lesson`.** Section 3 has no
+   completion timestamp anywhere except `AdherenceLogEntry`, but "actual
+   velocity" cannot be measured without knowing *when* work landed, and Phase 2
+   explicitly asks for a pace view. Both types gained a nullable
+   `completedAt`, stamped on completion and cleared on un-completion.
+2. **What "pace" means concretely.** This is the second real guess of the
+   night. Section 3 gives `pace_comfortable` with no units and no definition of
+   "velocity". I settled on **minutes of that kind of work per day** for both
+   sides, so they are directly comparable:
+   - *Comfortable pace* = the average of the declared `paceComfortable` values
+     across sub-tasks of that type.
+   - *Actual velocity* = estimated minutes of completed work of that type,
+     divided by the days from the first recorded completion to today.
+
+   Work marked done with no recorded completion date is excluded from the
+   velocity numerator so it cannot invent a burst of activity on day one.
+   **This is question 4 under "Needs your input".**
+3. **Lesson completion is derived, never trusted from the row.** A lesson with
+   sub-tasks is complete when they all are, regardless of what its own `status`
+   column says. This means ticking the last sub-task cannot leave a stale
+   lesson behind, and a lesson cannot claim completion its sub-tasks
+   contradict. Both directions are tested.
+4. **`lessons_completed` is not a stored column.** Section 3 lists it as a
+   rollup. It is recomputed from the lesson rows on every read rather than
+   cached, because a cached counter and its rows drift apart the first time a
+   write is interrupted.
+5. **`totalLessons` is raised to the actual lesson count when it is exceeded.**
+   Declaring 10 lessons and entering 12 should not report 120% complete.
+6. **Goals live on a third tab of the existing Tasks screen.** Phase 0 fixed
+   navigation at Today / Tasks / Settings, and Phase 2 adds no new destination,
+   so goals went into Tasks alongside blocks and habits, with a `goal/{goalId}`
+   detail route pushed on top.
+7. **Consequence type is settable at goal creation.** Section 3 has the field
+   and Phase 5's guilt-trip depends on it; leaving it unsettable would make it
+   unreachable data.
+
+### Not done in this phase
+
+- No sub-task reordering by drag. `orderIndex` exists and is respected on read,
+  but sub-tasks and lessons currently take the order they were created in.
+  Nothing in the Phase 2 deliverables asks for reordering.
+- No `IN_PROGRESS` state in the UI. The model and the rollup both support it,
+  but the checkboxes toggle between `NOT_STARTED` and `DONE` only. The plan
+  asks to "mark sub-tasks done", which this does.
+- Room DAO behaviour is still only covered through mapper tests, not against a
+  real SQLite instance. Same gap noted in Phase 1; wants an instrumented test.

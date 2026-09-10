@@ -8,6 +8,7 @@ import androidx.room.PrimaryKey
 import com.mend.engine.model.ConsequenceType
 import com.mend.engine.model.ProgressStatus
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /** Persisted form of `Goal` (PROJECT_PLAN.md Section 3). */
 @Entity(tableName = "goals")
@@ -49,6 +50,7 @@ data class LessonEntity(
     @ColumnInfo(name = "order_index") val orderIndex: Int,
     val title: String,
     val status: ProgressStatus = ProgressStatus.NOT_STARTED,
+    @ColumnInfo(name = "completed_at") val completedAt: LocalDateTime? = null,
 )
 
 /**
@@ -78,5 +80,6 @@ data class SubTaskEntity(
     @ColumnInfo(name = "estimated_duration_minutes") val estimatedDurationMinutes: Long,
     @ColumnInfo(name = "pace_comfortable_minutes") val paceComfortableMinutes: Long? = null,
     val status: ProgressStatus = ProgressStatus.NOT_STARTED,
+    @ColumnInfo(name = "completed_at") val completedAt: LocalDateTime? = null,
     @ColumnInfo(name = "order_index") val orderIndex: Int = 0,
 )

@@ -2,6 +2,7 @@ package com.mend.engine.model
 
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * A body of work with a deadline: "finish Japanese N5", "clear the syllabus".
@@ -64,6 +65,8 @@ data class Lesson(
     val orderIndex: Int,
     val title: String,
     val status: ProgressStatus = ProgressStatus.NOT_STARTED,
+    /** When this lesson was marked done. Only meaningful for a bare lesson. */
+    val completedAt: LocalDateTime? = null,
     val subTasks: List<SubTask> = emptyList(),
 ) {
     /** True when this lesson is completed by marking the lesson itself done. */
@@ -83,6 +86,14 @@ data class SubTask(
     /** Pace the user says is comfortable for this kind of sub-task. */
     val paceComfortable: Duration? = null,
     val status: ProgressStatus = ProgressStatus.NOT_STARTED,
+    /**
+     * When this sub-task was marked done.
+     *
+     * Not in PROJECT_PLAN.md Section 3, but "actual velocity" cannot be
+     * measured without knowing when work landed, and Phase 2 asks for a pace
+     * view. Null means done before tracking began, or not done at all.
+     */
+    val completedAt: LocalDateTime? = null,
 ) {
     init {
         require(!estimatedDuration.isNegative && !estimatedDuration.isZero) {

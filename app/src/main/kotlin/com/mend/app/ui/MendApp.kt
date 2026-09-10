@@ -15,6 +15,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.mend.app.ui.screens.GoalDetailScreen
 import com.mend.app.ui.screens.SettingsScreen
 import com.mend.app.ui.screens.TasksScreen
 import com.mend.app.ui.screens.TodayScreen
@@ -59,8 +62,21 @@ fun MendApp() {
                 modifier = Modifier.padding(innerPadding),
             ) {
                 composable(MendDestination.TODAY.route) { TodayScreen() }
-                composable(MendDestination.TASKS.route) { TasksScreen() }
+                composable(MendDestination.TASKS.route) {
+                    TasksScreen(
+                        onOpenGoal = { goalId -> navController.navigate("goal/$goalId") },
+                    )
+                }
                 composable(MendDestination.SETTINGS.route) { SettingsScreen() }
+                composable(
+                    route = "goal/{goalId}",
+                    arguments = listOf(navArgument("goalId") { type = NavType.StringType }),
+                ) { entry ->
+                    GoalDetailScreen(
+                        goalId = entry.arguments?.getString("goalId").orEmpty(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
     }

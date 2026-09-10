@@ -33,53 +33,65 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mend.app.ui.components.GoalEditorDialog
 import com.mend.app.ui.components.HabitEditorDialog
 import com.mend.app.ui.components.StaticBlockEditorDialog
 import com.mend.app.ui.components.describeDays
 import com.mend.app.ui.mendViewModel
+import com.mend.engine.model.Goal
 import com.mend.engine.model.Habit
 import com.mend.engine.model.StaticBlock
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-private enum class StaticLayerTab(val label: String) {
-    BLOCKS("Fixed blocks"),
+private enum class TasksTab(val label: String) {
+    BLOCKS("Blocks"),
     HABITS("Habits"),
+    GOALS("Goals"),
 }
 
 /**
- * Entry point for the static layer: the fixed blocks and habits that define
- * the shape of every day.
+ * Everything the user declares: fixed blocks, habits, and goals.
  *
- * The two are kept on separate tabs rather than in one merged list because
- * they behave differently in kind, not degree — a block carves the grid, a
- * habit sits on the timeline and is silently skipped when the day is full.
- * Presenting them as one list would suggest they are interchangeable.
+ * The three are kept on separate tabs rather than in one merged list because
+ * they differ in kind, not degree. A block carves the grid. A habit sits on
+ * the timeline and is silently skipped when the day is full. Only a goal's
+ * work is ever ranked and placed. One list would imply they are
+ * interchangeable, and they are not.
  */
 @Composable
-fun TasksScreen() {
+fun TasksScreen(onOpenGoal: (String) -> Unit = {}) {
     val viewModel = mendViewModel { app -> StaticLayerViewModel(app.staticLayerRepository) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val goalsViewModel = mendViewModel { app -> GoalsViewModel(app.goalRepository) }
+    val goalsState by goalsViewModel.state.collectAsStateWithLifecycle()
 
-    var tab by remember { mutableStateOf(StaticLayerTab.BLOCKS) }
+    var tab by remember { mutableStateOf(TasksTab.BLOCKS) }
     var editingBlock by remember { mutableStateOf<StaticBlock?>(null) }
     var editingHabit by remember { mutableStateOf<Habit?>(null) }
     var showBlockEditor by remember { mutableStateOf(false) }
     var showHabitEditor by remember { mutableStateOf(false) }
+    var editingGoal by remember { mutableStateOf<Goal?>(null) }
+    var showGoalEditor by remember { mutableStateOf(false) }
 
     Scaffold(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = {
                     when (tab) {
-                        StaticLayerTab.BLOCKS -> {
+                        TasksTab.BLOCKS -> {
                             editingBlock = null
                             showBlockEditor = true
                         }
-                        StaticLayerTab.HABITS -> {
+                        TasksTab.HABITS -> {
                             editingHabit = null
                             showHabitEditor = true
+                        }
+                        TasksTab.GOALS -> {
+                            editingGoal = null
+                            showGoalEditor = true
                         }
                     }
                 },
@@ -87,8 +99,9 @@ fun TasksScreen() {
                 text = {
                     Text(
                         when (tab) {
-                            StaticLayerTab.BLOCKS -> "Add block"
-                            StaticLayerTab.HABITS -> "Add habit"
+                            TasksTab.BLOCKS -> "Add block"
+                            TasksTab.HABITS -> "Add habit"
+                            TasksTab.GOALS -> "Add goal"
                         },
                     )
                 },
@@ -97,7 +110,7 @@ fun TasksScreen() {
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             TabRow(selectedTabIndex = tab.ordinal) {
-                StaticLayerTab.entries.forEach { entry ->
+                TasksTab.entries.forEach { entry ->
                     Tab(
                         selected = tab == entry,
                         onClick = { tab = entry },
@@ -107,7 +120,7 @@ fun TasksScreen() {
             }
 
             when (tab) {
-                StaticLayerTab.BLOCKS -> StaticBlockList(
+                TasksTab.BLOCKS -> StaticBlockList(
                     blocks = state.staticBlocks,
                     onEdit = {
                         editingBlock = it
@@ -116,13 +129,23 @@ fun TasksScreen() {
                     onDelete = { viewModel.delete(it.id) },
                 )
 
-                StaticLayerTab.HABITS -> HabitList(
+                TasksTab.HABITS -> HabitList(
                     habits = state.habits,
                     onEdit = {
                         editingHabit = it
                         showHabitEditor = true
                     },
                     onDelete = { viewModel.delete(it.id) },
+                )
+
+                TasksTab.GOALS -> GoalsTab(
+                    goals = goalsState.goals,
+                    onOpen = { onOpenGoal(it.goal.id) },
+                    onEdit = {
+                        editingGoal = it.goal
+                        showGoalEditor = true
+                    },
+                    onDelete = { goalsViewModel.deleteGoal(it.goal) },
                 )
             }
         }
@@ -135,6 +158,18 @@ fun TasksScreen() {
             onSave = {
                 viewModel.saveStaticBlock(it)
                 showBlockEditor = false
+            },
+        )
+    }
+
+    if (showGoalEditor) {
+        GoalEditorDialog(
+            existing = editingGoal,
+            today = LocalDate.now(),
+            onDismiss = { showGoalEditor = false },
+            onSave = {
+                goalsViewModel.saveGoal(it)
+                showGoalEditor = false
             },
         )
     }
