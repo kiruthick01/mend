@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+# The Gradle wrapper script must keep LF endings or it breaks on Unix and CI.
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+*.jar binary
