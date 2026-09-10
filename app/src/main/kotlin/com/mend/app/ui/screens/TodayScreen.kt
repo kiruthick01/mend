@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,17 +23,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mend.app.ui.mendViewModel
-import com.mend.engine.freetime.EntryPlacement
-import com.mend.engine.freetime.FreeTimeMap
+import com.mend.engine.allocation.DaySchedule
+import com.mend.engine.allocation.TaskPlacement
+import com.mend.engine.allocation.TimelineEntry
+import com.mend.engine.allocation.UnscheduledTask
 import com.mend.engine.model.StaticBlock
 import com.mend.engine.model.TaskType
 import com.mend.engine.time.TimeInterval
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -40,33 +45,32 @@ import java.util.Locale
 private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
- * The static skeleton of today.
- *
- * Phase 1 renders exactly two kinds of row: the immovable entries the user has
- * declared, and the open stretches between them. No goal work is placed here
- * yet — the free rows are literally the space Phase 3 will fill.
+ * Today, in full: the static skeleton with goal work packed into what was
+ * left of it, plus anything the day could not fit.
  */
 @Composable
 fun TodayScreen() {
-    val viewModel = mendViewModel { app -> StaticLayerViewModel(app.staticLayerRepository) }
+    val viewModel = mendViewModel { app ->
+        TodayViewModel(app.staticLayerRepository, app.goalRepository)
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val map = state.freeTimeMap
+    val schedule = state.schedule
 
     Column(modifier = Modifier.fillMaxSize()) {
         TodayHeader(state = state)
         HorizontalDivider()
 
-        if (map == null || state.isEmpty) {
+        if (schedule == null || !state.hasAnyInput) {
             EmptyDay()
         } else {
-            DayTimeline(map = map)
+            DayTimeline(schedule = schedule)
         }
     }
 }
 
 @Composable
-private fun TodayHeader(state: StaticLayerUiState) {
-    val map = state.freeTimeMap
+private fun TodayHeader(state: TodayUiState) {
+    val schedule = state.schedule
     Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
         Text(
             text = state.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()),
@@ -78,11 +82,16 @@ private fun TodayHeader(state: StaticLayerUiState) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (map != null) {
+        if (schedule != null) {
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "${formatSpan(map.totalOccupiedMinutes)} committed  ·  " +
-                    "${formatSpan(map.totalFreeMinutes)} free",
+                text = buildString {
+                    append("${formatSpan(schedule.freeTimeMap.totalOccupiedMinutes)} committed")
+                    append("  ·  ")
+                    append("${formatSpan(schedule.totalScheduledMinutes)} scheduled")
+                    append("  ·  ")
+                    append("${formatSpan(schedule.remainingFreeMinutes)} free")
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium,
@@ -103,8 +112,8 @@ private fun EmptyDay() {
         ) {
             Text("The day has no shape yet.", style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "Add your fixed blocks and habits in Tasks, and they will " +
-                    "appear here as the skeleton of the day.",
+                text = "Add your fixed blocks, habits and goals in Tasks, and the " +
+                    "day will be built here.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -113,136 +122,215 @@ private fun EmptyDay() {
 }
 
 /**
- * Interleaves occupied placements and free gaps into one ascending timeline.
+ * Interleaves fixed entries, scheduled work and the gaps still open.
  *
- * Both lists come from the engine already normalized and non-overlapping, so
- * this is a merge, not a reconciliation.
+ * The engine hands over a normalized, non-overlapping timeline, so this is a
+ * merge of three already-consistent lists rather than a reconciliation.
  */
 @Composable
-private fun DayTimeline(map: FreeTimeMap) {
-    val rows = buildTimelineRows(map)
+private fun DayTimeline(schedule: DaySchedule) {
+    val rows = buildRows(schedule)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 20.dp,
-            end = 20.dp,
-            top = 12.dp,
-            bottom = 24.dp,
-        ),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         items(rows, key = { it.key }) { row ->
             when (row) {
-                is TimelineRow.Occupied -> OccupiedRow(row.placement)
-                is TimelineRow.Free -> FreeRow(row.interval)
+                is Row.Fixed -> FixedRow(row.entry)
+                is Row.Work -> WorkRow(row.entry)
+                is Row.Free -> FreeRow(row.interval)
             }
+        }
+
+        if (schedule.unscheduled.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Did not fit today",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            items(schedule.unscheduled, key = { "un-${it.task.id}" }) { UnscheduledRow(it) }
         }
     }
 }
 
 @Composable
-private fun OccupiedRow(placement: EntryPlacement) {
-    val accent = when (placement.entry.type) {
+private fun FixedRow(entry: TimelineEntry.Fixed) {
+    val accent = when (entry.entry.type) {
         TaskType.HABIT -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.primary
     }
+    TimelineRow(
+        interval = entry.interval,
+        accent = accent,
+        barHeight = 44.dp,
+        title = entry.entry.title,
+        subtitle = fixedSubtitle(entry),
+    )
+}
+
+@Composable
+private fun WorkRow(entry: TimelineEntry.Work) {
+    TimelineRow(
+        interval = entry.interval,
+        accent = MaterialTheme.colorScheme.tertiary,
+        barHeight = 44.dp,
+        title = entry.task.title,
+        subtitle = workSubtitle(entry),
+    )
+}
+
+@Composable
+private fun FreeRow(interval: TimeInterval) {
+    TimelineRow(
+        interval = interval,
+        accent = MaterialTheme.colorScheme.outlineVariant,
+        barHeight = 28.dp,
+        title = "${formatSpan(interval.minutes)} free",
+        subtitle = null,
+        titleStyle = TitleStyle.MUTED,
+    )
+}
+
+@Composable
+private fun UnscheduledRow(unscheduled: UnscheduledTask) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(
+            text = unscheduled.task.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = unscheduled.reason,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private enum class TitleStyle { NORMAL, MUTED }
+
+@Composable
+private fun TimelineRow(
+    interval: TimeInterval,
+    accent: Color,
+    barHeight: androidx.compose.ui.unit.Dp,
+    title: String,
+    subtitle: String?,
+    titleStyle: TitleStyle = TitleStyle.NORMAL,
+) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        TimeGutter(placement.interval)
+        Column(modifier = Modifier.width(58.dp)) {
+            Text(
+                text = interval.start.format(TIME_FORMAT),
+                style = MaterialTheme.typography.labelLarge,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(
+                text = formatEnd(interval.end),
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Box(
             modifier = Modifier
                 .width(4.dp)
-                .height(44.dp)
+                .height(barHeight)
                 .clip(RoundedCornerShape(2.dp))
                 .background(accent),
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = placement.entry.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
+                text = title,
+                style = if (titleStyle == TitleStyle.MUTED) {
+                    MaterialTheme.typography.bodyMedium
+                } else {
+                    MaterialTheme.typography.bodyLarge
+                },
+                fontWeight = if (titleStyle == TitleStyle.MUTED) null else FontWeight.Medium,
+                color = if (titleStyle == TitleStyle.MUTED) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
             )
-            Text(
-                text = subtitleFor(placement),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            subtitle?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
 
-@Composable
-private fun FreeRow(interval: TimeInterval) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        TimeGutter(interval)
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .height(28.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(MaterialTheme.colorScheme.outlineVariant),
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = "${formatSpan(interval.minutes)} free",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun TimeGutter(interval: TimeInterval) {
-    Column(modifier = Modifier.width(58.dp)) {
-        Text(
-            text = interval.start.format(TIME_FORMAT),
-            style = MaterialTheme.typography.labelLarge,
-            fontFamily = FontFamily.Monospace,
-        )
-        Text(
-            text = formatEnd(interval.end),
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-private sealed interface TimelineRow {
+private sealed interface Row {
     val start: LocalDateTime
     val key: String
 
-    data class Occupied(val placement: EntryPlacement) : TimelineRow {
-        override val start: LocalDateTime get() = placement.interval.start
-        override val key: String get() = "busy-${placement.entry.id}-$start"
+    data class Fixed(val entry: TimelineEntry.Fixed) : Row {
+        override val start: LocalDateTime get() = entry.interval.start
+        override val key: String get() = "fixed-${entry.entry.id}-$start"
     }
 
-    data class Free(val interval: TimeInterval) : TimelineRow {
+    data class Work(val entry: TimelineEntry.Work) : Row {
+        override val start: LocalDateTime get() = entry.interval.start
+        override val key: String get() = "work-${entry.task.id}-$start"
+    }
+
+    data class Free(val interval: TimeInterval) : Row {
         override val start: LocalDateTime get() = interval.start
         override val key: String get() = "free-$start"
     }
 }
 
-private fun buildTimelineRows(map: FreeTimeMap): List<TimelineRow> =
-    (map.placements.map(TimelineRow::Occupied) + map.free.map(TimelineRow::Free))
-        .sortedBy { it.start }
+private fun buildRows(schedule: DaySchedule): List<Row> =
+    (
+        schedule.timeline.map { entry ->
+            when (entry) {
+                is TimelineEntry.Fixed -> Row.Fixed(entry)
+                is TimelineEntry.Work -> Row.Work(entry)
+            }
+        } + schedule.remainingFree.map(Row::Free)
+        ).sortedBy { it.start }
 
-private fun subtitleFor(placement: EntryPlacement): String {
-    val length = formatSpan(placement.interval.minutes)
-    val entry = placement.entry
+private fun fixedSubtitle(entry: TimelineEntry.Fixed): String {
+    val length = formatSpan(entry.interval.minutes)
+    val block = entry.entry
     return when {
-        entry is StaticBlock && entry.isPartialWindow ->
-            "$length within ${entry.windowStart.format(TIME_FORMAT)}" +
-                "-${entry.windowEnd.format(TIME_FORMAT)} window"
-        entry.type == TaskType.HABIT -> "$length  ·  habit"
+        block is StaticBlock && block.isPartialWindow ->
+            "$length within ${block.windowStart.format(TIME_FORMAT)}" +
+                "-${block.windowEnd.format(TIME_FORMAT)} window"
+        block.type == TaskType.HABIT -> "$length  ·  habit"
         else -> "$length  ·  fixed block"
+    }
+}
+
+private fun workSubtitle(entry: TimelineEntry.Work): String {
+    val placement: TaskPlacement = entry.placement
+    val length = formatSpan(entry.interval.minutes)
+    val sliceIndex = placement.slices.indexOf(entry.interval)
+    return buildString {
+        append(length)
+        if (placement.isSplit) {
+            append("  ·  part ${sliceIndex + 1} of ${placement.slices.size}")
+        }
+        if (placement.isPartial) {
+            append("  ·  ${formatSpan(placement.requestedDuration.toMinutes())} wanted")
+        }
     }
 }
 
 /** Renders the exclusive end instant, showing end-of-day as 24:00 rather than 00:00. */
 private fun formatEnd(end: LocalDateTime): String =
-    if (end.toLocalTime() == java.time.LocalTime.MIDNIGHT) "24:00" else end.format(TIME_FORMAT)
+    if (end.toLocalTime() == LocalTime.MIDNIGHT) "24:00" else end.format(TIME_FORMAT)
 
 private fun formatSpan(minutes: Long): String {
     val hours = minutes / 60

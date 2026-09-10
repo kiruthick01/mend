@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.mend.engine.model.ConsequenceType
+import com.mend.engine.model.Flexibility
 import com.mend.engine.model.Goal
 import com.mend.engine.model.Lesson
 import com.mend.engine.model.SubTask
@@ -213,6 +214,9 @@ fun SubTaskEditorDialog(
     var comfortable by remember {
         mutableStateOf(existing?.paceComfortable?.toMinutes()?.toString().orEmpty())
     }
+    var flexibility by remember {
+        mutableStateOf(existing?.flexibility ?: Flexibility.SPLITTABLE)
+    }
 
     val parsedMinutes = minutes.toLongOrNull()
     val parsedComfortable = comfortable.takeIf { it.isNotBlank() }?.toLongOrNull()
@@ -280,6 +284,7 @@ fun SubTaskEditorDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                FlexibilityPicker(selected = flexibility, onSelect = { flexibility = it })
                 error?.let {
                     Text(
                         text = it,
@@ -305,6 +310,7 @@ fun SubTaskEditorDialog(
                             type = type.trim(),
                             estimatedDuration = Duration.ofMinutes(parsedMinutes!!),
                             paceComfortable = parsedComfortable?.let(Duration::ofMinutes),
+                            flexibility = flexibility,
                         ),
                     )
                 },
@@ -313,6 +319,37 @@ fun SubTaskEditorDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+/**
+ * How the allocator may bend this sub-task to fit the day.
+ *
+ * Worded as behaviour rather than as the enum names, because "splittable" is
+ * a scheduler word and "can be broken up" is what the user is actually
+ * deciding.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlexibilityPicker(selected: Flexibility, onSelect: (Flexibility) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("How it can be scheduled", style = MaterialTheme.typography.bodyMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FLEXIBILITY_LABELS.forEach { (value, label) ->
+                FilterChip(
+                    selected = selected == value,
+                    onClick = { onSelect(value) },
+                    label = { Text(label) },
+                )
+            }
+        }
+    }
+}
+
+private val FLEXIBILITY_LABELS: List<Pair<Flexibility, String>> = listOf(
+    Flexibility.SPLITTABLE to "Can be broken up",
+    Flexibility.MOVABLE to "One sitting, any time",
+    Flexibility.SHRINKABLE to "Can be cut short",
+    Flexibility.FIXED to "One sitting, all of it",
+)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

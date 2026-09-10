@@ -303,3 +303,124 @@ was corrected and the assertion now documents which lesson contributes what.
   asks to "mark sub-tasks done", which this does.
 - Room DAO behaviour is still only covered through mapper tests, not against a
   real SQLite instance. Same gap noted in Phase 1; wants an instrumented test.
+
+---
+
+## Phase 3 — Deterministic Priority & Scheduling Engine
+
+**Status: COMPLETE** (clean build from scratch passes, 172 tests pass, committed)
+
+### Deliverables checklist
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 3.1 | `computePriorityScore(task, weights): Double` | **PASS** | `com.mend.engine.priority.computePriorityScore`; pure, takes `today` as a parameter rather than reading a clock |
+| 3.2 | Combines deadline proximity | **PASS** | `deadlineProximity` — 1.0 at or past the deadline, falling linearly to 0.0 at a 30-day horizon |
+| 3.3 | Combines manual importance | **PASS** | `normalisedImportance` maps the 1-5 scale onto 0.0-1.0, clamping anything outside it |
+| 3.4 | Combines adherence trend, defaulting neutral | **PASS** | `adherencePressure`; `GoalTask.NEUTRAL_ADHERENCE = 0.5` until Phase 6 supplies real history |
+| 3.5 | Greedy slot allocation, highest priority picks first | **PASS** | `allocate()` walks the ranked list top-down; no lookahead, no backtracking |
+| 3.6 | `SPLITTABLE` may span multiple intervals | **PASS** | `a SPLITTABLE task spans multiple free intervals` — 180m across a 2h and a 4h gap |
+| 3.7 | `FIXED` must fit one interval or fail and be reported unscheduled | **PASS** | `a FIXED task that cannot fit one interval is not scheduled at all` — lands in `unscheduled` with a reason |
+| 3.8 | `SHRINKABLE` may reduce duration under pressure | **PASS** | Shrinks to the largest available interval, with a floor at 50% of the request; both the shrink and the refusal below the floor are tested |
+| 3.9 | Fills the free time map with ranked sub-tasks | **PASS** | `allocate(freeTimeMap, tasks, weights, today)` |
+| 3.10 | Clear logged reasoning for every placement decision | **PASS** | `SchedulingLog` — structured entries of kind INPUT / RANKED / PLACED / SPLIT / SHRUNK / PARTIAL / SKIPPED / SUMMARY, each with a message. `forTask(id)` retrieves one task's whole story |
+| 3.11 | Able to answer "why is this here" from logs alone | **PASS** | The RANKED entry carries the full score breakdown (`score 0.675 = deadline 0.50 x 0.50 + ...`), the request size and the flexibility; the PLACED entry carries where and why. Refusals are logged too, so "why is this *not* here" is answerable as well. Dumped to logcat under tag `MendScheduler` on every recompute. |
+| 3.12 | Today screen shows the full schedule: static blocks + habits + scheduled sub-tasks | **PASS** | `TodayScreen` renders `DaySchedule.timeline` interleaved with the remaining free gaps, plus a "Did not fit today" section |
+| 3.13 | Unit test: overfull day | **PASS** | `an overfull day places what fits and reports the rest as unscheduled`, `on an overfull day the lowest priority work is what gets dropped` |
+| 3.14 | Unit test: tie-breaking between equal-priority tasks | **PASS** | Three tests: tie broken by deadline, by importance, and finally by id, including a check that reversing the input order yields an identical schedule |
+| 3.15 | Unit test: splittable task spanning multiple gaps | **PASS** | `a SPLITTABLE task spans multiple free intervals`, plus not splitting needlessly and filling the earlier gap first |
+
+### Constraints checklist
+
+| Constraint | Result | Notes |
+| --- | --- | --- |
+| Must stay understandable and debuggable | **PASS** | One pass, top-down, no backtracking. Every branch of `place()` produces either a placement with a written reason or a refusal with a written reason. |
+| Resist heuristics that are not traceable | **PASS** | The only tuneable numbers are three named constants — `DEADLINE_HORIZON_DAYS` (30), `MINIMUM_SHRINK_FRACTION` (0.5), `MINIMUM_USEFUL_SLICE` (10m) — each documented where it is defined. Deadline proximity is linear rather than exponential specifically because a curve is harder to reason about when something turns up somewhere surprising. |
+| Simple, explainable rules over clever ones | **PASS** | No bin-packing optimisation, no reordering to improve fit. A smarter allocator would fit marginally more work in and would be much harder to argue with. |
+| Engine stays pure Kotlin, no Android | **PASS** | `:scheduling-engine:dependencies` shows no Android/Compose/Room artifacts; `grep -rn "import android" scheduling-engine/src/` finds nothing |
+| No scheduling logic as an AI call | **PASS** | There is no network code anywhere in the repository yet. Scoring and allocation are arithmetic. |
+
+### Test results
+
+| Suite | Tests | Passed | Failed |
+| --- | --- | --- | --- |
+| `:scheduling-engine:test` | 122 | 122 | 0 |
+| `:app:testDebugUnitTest` | 50 | 50 | 0 |
+| **Total** | **172** | **172** | **0** |
+
+Engine: `AllocationTest` 32, `ProgressTest` 26, `FreeTimeMapTest` 23,
+`PriorityTest` 19, `TimeIntervalTest` 11, `IntervalsTest` 10, `EngineTest` 1.
+App: `GoalMappersTest` 13, `TimeParsingTest` 13, `TaskMappersTest` 12,
+`ScheduleBuilderTest` 12.
+
+Verified with `./gradlew clean test assembleDebug` — a full build from an empty
+build directory, not an incremental one. A debug APK is produced at
+`app/build/outputs/apk/debug/app-debug.apk`.
+
+One test failed on first run (`a SHRINKABLE task is cut down rather than
+dropped`) because of a leftover expression in the test fixture that built a
+zero-length day. That was a defect in the test, not the allocator; it was
+removed and the test passes.
+
+### Decisions I had to make (not specified in PROJECT_PLAN.md)
+
+1. **Deadline horizon of 30 days, decaying linearly.** Section 3 says the score
+   is `f(deadline_proximity, ...)` but never defines proximity. A deadline 30+
+   days out contributes nothing; one today or overdue contributes the maximum.
+   Linear, not exponential — an exponential curve looks more sophisticated and
+   is much harder to reason about when a task turns up somewhere odd.
+   **Question 5 under "Needs your input".**
+2. **Default weights: deadline 0.50, importance 0.35, adherence 0.15.** They sum
+   to 1.0, so a score is always in 0.0-1.0 and directly comparable. Section 3
+   names the three weights but gives no starting values. Phase 6 will tune them.
+3. **`SubTask` gained a `flexibility` field, defaulting to `SPLITTABLE`.**
+   Section 3 puts flexibility on `TimeSpec`, but the sub-task is the unit that
+   actually gets placed, and two sub-tasks of the same lesson genuinely differ:
+   reading splits across gaps, a mock exam does not. It is exposed in the
+   sub-task editor, worded as behaviour ("Can be broken up", "One sitting, all
+   of it") rather than as enum names.
+4. **`MOVABLE` behaves identically to `FIXED` in the allocator.** Both must be
+   placed whole in a single interval. The difference is intent, not mechanism,
+   and it shows up in the logged reason. If `MOVABLE` should mean something
+   distinct — preferring a later slot, or being displaceable by higher-priority
+   work — that is a Phase 4 reshuffle concern.
+5. **`SHRINKABLE` floor at 50% of the request.** Below half, a task is not
+   worth doing badly, so it is refused and reported instead. The number is a
+   named constant. **Question 6 under "Needs your input".**
+6. **Partial placement for `SPLITTABLE` on an overfull day.** If the day runs
+   out, a splittable task takes what is available and the placement is marked
+   partial, with the outstanding minutes named in the reason. The alternative
+   — all or nothing — wastes real free time for no benefit, since splittable
+   work continues tomorrow by definition.
+7. **`MINIMUM_USEFUL_SLICE` of 10 minutes.** Free fragments shorter than this
+   are dropped rather than filled, and a split will not create one. Without a
+   floor the allocator produces four-minute study slivers that are worse than
+   useless.
+8. **A bare lesson is estimated at 60 minutes.** A lesson with no sub-tasks
+   carries no duration of its own but still has to be placed.
+   **Question 7 under "Needs your input" — this is a placeholder, not a
+   considered answer.**
+9. **`GoalTask` as the bridge type.** Sub-tasks and bare lessons are flattened
+   into a `GoalTask` carrying its goal's deadline and importance, so scoring
+   never walks back up the tree. It is the only `Schedulable` in the model,
+   which is what makes "habits are never ranked" a compile-time fact.
+10. **The decision log goes to logcat, not the UI.** Phase 3 says the reasoning
+    is "not user-facing yet"; `TodayViewModel` dumps it under the tag
+    `MendScheduler` on every recompute.
+
+### Not done in this phase
+
+- **The schedule is recomputed, not stored.** Every change to a block, habit or
+  sub-task rebuilds today from scratch. That is correct for Phase 3 and will
+  not survive Phase 4, which needs a *proposed* schedule to sit alongside the
+  accepted one so a change can be accepted or declined. Expect to add schedule
+  persistence there.
+- **No date navigation.** Today only, as in Phase 1.
+- **Adherence trend is neutral for every task.** By design — Phase 6 supplies
+  the real values. The term is present, weighted, and tested, and it currently
+  moves nothing.
+- **Nothing has been run on a device or emulator.** The APK builds, all logic
+  is unit tested, but no screen has been rendered on real hardware. There is no
+  emulator image installed on this machine and no device attached.
+  **This is the single biggest gap in tonight's work — see the summary.**
+- Still no instrumented Room tests, as in Phases 1 and 2.

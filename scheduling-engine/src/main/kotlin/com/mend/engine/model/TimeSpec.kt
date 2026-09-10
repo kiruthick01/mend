@@ -16,7 +16,10 @@ data class TimeSpec(
     /** Optional window this work must land inside, e.g. "only during library hours". */
     val windowStart: LocalTime? = null,
     val windowEnd: LocalTime? = null,
-    /** Time needed within [windowStart]..[windowEnd]; null means [unitDuration]. */
+    /**
+     * How much time this work actually needs. When a window is set, that time
+     * must fall inside it. Null falls back to one [unitDuration].
+     */
     val requiredDurationWithinWindow: Duration? = null,
 ) {
     init {

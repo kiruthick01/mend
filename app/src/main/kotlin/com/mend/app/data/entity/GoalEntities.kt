@@ -6,6 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.mend.engine.model.ConsequenceType
+import com.mend.engine.model.Flexibility
 import com.mend.engine.model.ProgressStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -79,6 +80,7 @@ data class SubTaskEntity(
     val title: String,
     @ColumnInfo(name = "estimated_duration_minutes") val estimatedDurationMinutes: Long,
     @ColumnInfo(name = "pace_comfortable_minutes") val paceComfortableMinutes: Long? = null,
+    val flexibility: Flexibility = Flexibility.SPLITTABLE,
     val status: ProgressStatus = ProgressStatus.NOT_STARTED,
     @ColumnInfo(name = "completed_at") val completedAt: LocalDateTime? = null,
     @ColumnInfo(name = "order_index") val orderIndex: Int = 0,

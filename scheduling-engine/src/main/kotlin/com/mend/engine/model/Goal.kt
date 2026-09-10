@@ -85,6 +85,15 @@ data class SubTask(
     val estimatedDuration: Duration,
     /** Pace the user says is comfortable for this kind of sub-task. */
     val paceComfortable: Duration? = null,
+    /**
+     * How the allocator may bend this work to fit the day.
+     *
+     * Not in Section 3, which puts flexibility on `TimeSpec`, but a sub-task
+     * is the unit that actually gets placed and different sub-tasks of the
+     * same lesson bend differently: reading splits across gaps, a mock exam
+     * does not. Splittable is the default because most study work is.
+     */
+    val flexibility: Flexibility = Flexibility.SPLITTABLE,
     val status: ProgressStatus = ProgressStatus.NOT_STARTED,
     /**
      * When this sub-task was marked done.

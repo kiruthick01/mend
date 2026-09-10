@@ -1,7 +1,12 @@
 package com.mend.engine
 
+import com.mend.engine.model.ConsequenceType
+import com.mend.engine.model.Flexibility
+import com.mend.engine.model.GoalTask
 import com.mend.engine.model.Habit
 import com.mend.engine.model.StaticBlock
+import com.mend.engine.model.TimeSpec
+import com.mend.engine.model.UnitDuration
 import com.mend.engine.model.WindowAnchor
 import com.mend.engine.time.TimeInterval
 import java.time.DayOfWeek
@@ -67,3 +72,35 @@ fun List<TimeInterval>.render(): List<String> = map {
         it.end.minute,
     )
 }
+
+fun goalTask(
+    id: String,
+    title: String = id,
+    deadlineIn: Long,
+    importance: Int = 3,
+    minutes: Long = 60,
+    flexibility: Flexibility = Flexibility.SPLITTABLE,
+    windowFrom: LocalTime? = null,
+    windowTo: LocalTime? = null,
+    adherenceTrend: Double = GoalTask.NEUTRAL_ADHERENCE,
+    days: Set<DayOfWeek> = StaticBlock.ALL_DAYS,
+    date: LocalDate = TEST_DATE,
+): GoalTask = GoalTask(
+    id = id,
+    title = title,
+    consequenceType = ConsequenceType.SOFT_GOAL,
+    timeSpec = TimeSpec(
+        unitDuration = UnitDuration.coveringAtLeast(minutes.toInt()),
+        flexibility = flexibility,
+        windowStart = windowFrom,
+        windowEnd = windowTo,
+        requiredDurationWithinWindow = Duration.ofMinutes(minutes),
+    ),
+    daysOfWeek = days,
+    goalId = "goal",
+    lessonId = "lesson",
+    subTaskId = id,
+    deadline = date.plusDays(deadlineIn),
+    manualImportance = importance,
+    adherenceTrend = adherenceTrend,
+)

@@ -69,6 +69,7 @@ fun SubTaskEntity.toDomain(): SubTask = SubTask(
     title = title,
     estimatedDuration = Duration.ofMinutes(estimatedDurationMinutes),
     paceComfortable = paceComfortableMinutes?.let(Duration::ofMinutes),
+    flexibility = flexibility,
     status = status,
     completedAt = completedAt,
 )
@@ -80,6 +81,7 @@ fun SubTask.toEntity(orderIndex: Int = 0): SubTaskEntity = SubTaskEntity(
     title = title,
     estimatedDurationMinutes = estimatedDuration.toMinutes(),
     paceComfortableMinutes = paceComfortable?.toMinutes(),
+    flexibility = flexibility,
     status = status,
     completedAt = completedAt,
     orderIndex = orderIndex,
