@@ -12,10 +12,10 @@ rewrites your day.
 
 ## Current phase
 
-**Phase 4 — Reshuffling, interrupts and protected sleep.** The schedule can now
-change, and every change is a conversation: the engine proposes, the user
-accepts, declines or counter-proposes. Sleep is a protected boundary the day
-gets cut down for, and a genuinely narrow class of emergency can claim today.
+**Phase 5 — Adherence logging and the guilt-trip trigger.** Every completion
+and every miss is now written down, and that history drives a warning that
+fires only for work with a real-world consequence, only when the pace actually
+being sustained will miss the deadline.
 
 Done so far:
 
@@ -28,9 +28,11 @@ Done so far:
   showing the full computed day.
 - **Phase 4** — negotiated reshuffling, emergency interrupts, protected sleep
   with a configurable hard stop, and the delay-negotiation tier.
+- **Phase 5** — app-wide adherence logging, rolling adherence and delay
+  statistics, and the deadline-projection warning.
 
-Not yet built: adherence-driven nudges, adaptive weights, any AI layer, alarms,
-notifications and widgets.
+Not yet built: adaptive weight tuning, any AI layer, alarms, notifications and
+widgets.
 
 The full phase plan lives in [PROJECT_PLAN.md](PROJECT_PLAN.md).
 

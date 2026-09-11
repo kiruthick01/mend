@@ -10,6 +10,8 @@ import com.mend.engine.model.Lesson
 import com.mend.engine.model.ProgressStatus
 import com.mend.engine.model.SubTask
 import com.mend.engine.reshuffle.ScheduleInvalidatingEvent
+import com.mend.engine.time.TimeInterval
+import java.time.Duration
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -37,6 +39,12 @@ class GoalRepository(
      * the next reshuffle proposal.
      */
     private val reshuffle: ReshuffleRepository? = null,
+    /**
+     * Optional for testability. When present, every completion is written to
+     * the append-only adherence stream, which is what every behavioural
+     * feature from Phase 5 onward reads.
+     */
+    private val adherence: AdherenceRepository? = null,
 ) {
 
     fun observeGoals(): Flow<List<GoalWithLessons>> =
@@ -113,6 +121,7 @@ class GoalRepository(
         done: Boolean,
         orderIndex: Int,
         now: LocalDateTime = LocalDateTime.now(),
+        assignedSlot: TimeInterval? = null,
     ) {
         subTaskDao.upsert(
             subTask.copy(
@@ -120,6 +129,19 @@ class GoalRepository(
                 completedAt = if (done) now else null,
             ).toEntity(orderIndex),
         )
+
+        // Only completion is logged. Un-ticking is a correction to the current
+        // state, not a new behavioural fact, and the stream is append-only, so
+        // writing a row for it would leave a permanent record of an action the
+        // user was in the middle of undoing.
+        if (done) {
+            adherence?.recordCompletion(
+                taskId = subTask.id,
+                assignedSlot = assignedSlot,
+                completedAt = now,
+                estimatedDuration = subTask.estimatedDuration,
+            )
+        }
     }
 
     /**
@@ -133,6 +155,8 @@ class GoalRepository(
         lesson: Lesson,
         done: Boolean,
         now: LocalDateTime = LocalDateTime.now(),
+        assignedSlot: TimeInterval? = null,
+        estimatedDuration: Duration = ScheduleBuilder.BARE_LESSON_ESTIMATE,
     ) {
         lessonDao.upsert(
             lesson.copy(
@@ -140,5 +164,14 @@ class GoalRepository(
                 completedAt = if (done) now else null,
             ).toEntity(),
         )
+
+        if (done) {
+            adherence?.recordCompletion(
+                taskId = lesson.id,
+                assignedSlot = assignedSlot,
+                completedAt = now,
+                estimatedDuration = estimatedDuration,
+            )
+        }
     }
 }

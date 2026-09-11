@@ -3,21 +3,34 @@ package com.mend.app.ui.screens
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mend.app.data.entity.ReshuffleProposalEntity
 import com.mend.app.data.mapper.changeLines
+import com.mend.app.repository.AdherenceRepository
 import com.mend.app.repository.GoalRepository
+import com.mend.app.repository.GoalWithLessons
 import com.mend.app.repository.RecoveryRepository
 import com.mend.app.repository.ReshuffleRepository
 import com.mend.app.repository.ScheduleBuilder
-import com.mend.app.repository.detectInterrupt
 import com.mend.app.repository.StaticLayerRepository
+import com.mend.app.repository.detectInterrupt
+import com.mend.engine.adherence.detectElapsedMisses
 import com.mend.engine.allocation.DaySchedule
+import com.mend.engine.guilt.GuiltTrip
+import com.mend.engine.guilt.evaluateAllGuiltTrips
 import com.mend.engine.interrupt.InterruptPlan
+import com.mend.engine.model.AdherenceLogEntry
+import com.mend.engine.model.Habit
 import com.mend.engine.model.ProtectedRecovery
+import com.mend.engine.model.StaticBlock
+import com.mend.engine.model.SubTask
 import com.mend.engine.recovery.SleepStopDecision
 import com.mend.engine.recovery.evaluateSleepStop
 import com.mend.engine.reshuffle.ReshuffleResponse
+import com.mend.engine.reshuffle.ScheduleInvalidatingEvent
+import com.mend.engine.time.TimeInterval
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -27,7 +40,8 @@ import kotlinx.coroutines.launch
 
 /**
  * The whole of today: the fixed grid, the goal work packed into what is left,
- * the bedtime boundary, and any outstanding negotiation.
+ * the bedtime boundary, any outstanding negotiation, and any warning that has
+ * earned the right to be shown.
  *
  * Every recompute dumps the engine's decision log to logcat under [LOG_TAG].
  * There is still no user-facing explanation, so this remains the only way to
@@ -39,51 +53,39 @@ class TodayViewModel(
     private val goals: GoalRepository,
     private val recovery: RecoveryRepository,
     private val reshuffle: ReshuffleRepository,
+    private val adherence: AdherenceRepository,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
 
+    /** Warnings waved away for this session. Not persisted, and not a resolution. */
+    private val dismissedGuiltTrips = MutableStateFlow<Set<String>>(emptySet())
+
+    /** The stored inputs the day is built from. */
+    private data class Inputs(
+        val blocks: List<StaticBlock>,
+        val habits: List<Habit>,
+        val goals: List<GoalWithLessons>,
+        val sleepBlock: ProtectedRecovery?,
+        val proposal: ReshuffleProposalEntity?,
+    )
+
+    private val inputs = combine(
+        staticLayer.observeStaticBlocks(),
+        staticLayer.observeHabits(),
+        goals.observeGoals(),
+        recovery.observeSleepBlock(),
+        reshuffle.observeOutstanding(),
+    ) { blocks, habits, goalList, sleepBlock, proposal ->
+        Inputs(blocks, habits, goalList, sleepBlock, proposal)
+    }
+
     val state: StateFlow<TodayUiState> =
         combine(
-            staticLayer.observeStaticBlocks(),
-            staticLayer.observeHabits(),
-            goals.observeGoals(),
-            recovery.observeSleepBlock(),
-            reshuffle.observeOutstanding(),
-        ) { blocks, habits, goalList, sleepBlock, proposal ->
-            val instant = now()
-            val date = instant.toLocalDate()
-            val schedule = ScheduleBuilder.buildDaySchedule(
-                date = date,
-                staticBlocks = blocks,
-                habits = habits,
-                goals = goalList,
-                protectedRecovery = listOfNotNull(sleepBlock),
-            )
-
-            TodayUiState(
-                date = date,
-                schedule = schedule,
-                sleepBlock = sleepBlock,
-                sleepStop = evaluateSleepStop(instant, schedule, sleepBlock),
-                interrupt = detectInterrupt(
-                    now = instant,
-                    schedule = schedule,
-                    goals = goalList,
-                    staticBlocks = blocks,
-                    habits = habits,
-                    protectedRecovery = listOfNotNull(sleepBlock),
-                ),
-                proposal = proposal?.let {
-                    ProposalUiState(
-                        id = it.id,
-                        effectiveFrom = it.effectiveFrom,
-                        summary = it.summary,
-                        changes = it.changeLines(),
-                    )
-                },
-                hasAnyInput = blocks.isNotEmpty() || habits.isNotEmpty() ||
-                    goalList.isNotEmpty() || sleepBlock != null,
-            )
+            inputs,
+            adherence.observeLog(),
+            dismissedGuiltTrips,
+        ) { input, log, dismissed ->
+            buildState(input, log, dismissed)
         }
             .onEach { it.schedule?.let(::dumpDecisionLog) }
             .stateIn(
@@ -92,8 +94,102 @@ class TodayViewModel(
                 initialValue = TodayUiState(date = now().toLocalDate()),
             )
 
+    private fun buildState(
+        input: Inputs,
+        log: List<AdherenceLogEntry>,
+        dismissed: Set<String>,
+    ): TodayUiState {
+        val instant = now()
+        val date = instant.toLocalDate()
+        val recoveryBlocks = listOfNotNull(input.sleepBlock)
+
+        val schedule = ScheduleBuilder.buildDaySchedule(
+            date = date,
+            staticBlocks = input.blocks,
+            habits = input.habits,
+            goals = input.goals,
+            protectedRecovery = recoveryBlocks,
+        )
+
+        return TodayUiState(
+            date = date,
+            schedule = schedule,
+            sleepBlock = input.sleepBlock,
+            sleepStop = evaluateSleepStop(instant, schedule, input.sleepBlock),
+            interrupt = detectInterrupt(
+                now = instant,
+                schedule = schedule,
+                goals = input.goals,
+                staticBlocks = input.blocks,
+                habits = input.habits,
+                protectedRecovery = recoveryBlocks,
+            ),
+            proposal = input.proposal?.let {
+                ProposalUiState(
+                    id = it.id,
+                    effectiveFrom = it.effectiveFrom,
+                    summary = it.summary,
+                    changes = it.changeLines(),
+                )
+            },
+            guiltTrips = evaluateAllGuiltTrips(
+                goals = input.goals.map { it.goal to it.lessons },
+                log = log,
+                today = date,
+            ).filterNot { it.goalId in dismissed },
+            // Scheduled work keyed back to the sub-task behind it, so Today can
+            // tick something off without first going and finding it in the goal
+            // hierarchy.
+            subTasksById = input.goals
+                .flatMap { it.lessons }
+                .flatMap { lesson -> lesson.subTasks.map { it.id to it } }
+                .toMap(),
+            hasAnyInput = input.blocks.isNotEmpty() || input.habits.isNotEmpty() ||
+                input.goals.isNotEmpty() || input.sleepBlock != null,
+        )
+    }
+
     init {
         watchForReshuffleTriggers()
+        watchForElapsedMisses()
+    }
+
+    /**
+     * Writes down scheduled work whose time has gone.
+     *
+     * A miss has to become an event or none of the behavioural features work:
+     * left implicit, adherence never degrades, the projection never sees a
+     * problem, and the warning that should fire never does. Silence here turns
+     * into false reassurance downstream.
+     *
+     * Completed work needs no exclusion — it stops being pending, so it is not
+     * in the schedule to begin with. `alreadyLogged` is what prevents a second
+     * entry for the same task on the same day, which matters because the stream
+     * is append-only and a duplicate could never be tidied away.
+     *
+     * Only today is swept. Catching up on days the app was not open needs
+     * either stored schedules or a background job, and is Phase 8 work.
+     */
+    private fun watchForElapsedMisses() {
+        viewModelScope.launch {
+            state.collect { current ->
+                val schedule = current.schedule ?: return@collect
+                val instant = now()
+
+                detectElapsedMisses(
+                    schedule = schedule,
+                    now = instant,
+                    alreadyLogged = adherence.loggedOn(current.date),
+                ).forEach { miss ->
+                    adherence.recordMiss(
+                        taskId = miss.taskId,
+                        taskTitle = miss.placement.task.title,
+                        assignedSlot = miss.slot,
+                        now = instant,
+                    )
+                }
+            }
+        }
     }
 
     /**
@@ -107,47 +203,77 @@ class TodayViewModel(
      */
     private fun watchForReshuffleTriggers() {
         viewModelScope.launch {
-            combine(
-                reshuffle.observePendingEvents(),
-                staticLayer.observeStaticBlocks(),
-                staticLayer.observeHabits(),
-                goals.observeGoals(),
-                recovery.observeSleepBlock(),
-            ) { pending, blocks, habits, goalList, sleepBlock ->
-                ReshuffleInputs(pending.isNotEmpty(), blocks, habits, goalList, sleepBlock)
-            }.collect { inputs ->
-                if (!inputs.hasPendingEvents) return@collect
+            combine(reshuffle.observePendingEvents(), inputs) { pending, input ->
+                pending.isNotEmpty() to input
+            }.collect { (hasPending, input) ->
+                if (!hasPending) return@collect
 
                 val instant = now()
-                val tomorrow = reshuffle.earliestEffectiveDate(instant)
                 reshuffle.proposeIfNeeded(
                     now = instant,
                     proposedSchedule = ScheduleBuilder.buildDaySchedule(
-                        date = tomorrow,
-                        staticBlocks = inputs.blocks,
-                        habits = inputs.habits,
-                        goals = inputs.goals,
-                        protectedRecovery = listOfNotNull(inputs.sleepBlock),
+                        date = reshuffle.earliestEffectiveDate(instant),
+                        staticBlocks = input.blocks,
+                        habits = input.habits,
+                        goals = input.goals,
+                        protectedRecovery = listOfNotNull(input.sleepBlock),
                     ),
                 )
             }
         }
     }
 
-    private data class ReshuffleInputs(
-        val hasPendingEvents: Boolean,
-        val blocks: List<com.mend.engine.model.StaticBlock>,
-        val habits: List<com.mend.engine.model.Habit>,
-        val goals: List<com.mend.app.repository.GoalWithLessons>,
-        val sleepBlock: ProtectedRecovery?,
-    )
+    /**
+     * Marks scheduled work done, against the slot it was actually given.
+     *
+     * The slot is passed through rather than inferred: ticking something off at
+     * 21:00 that was scheduled for 09:00 is a materially different fact from
+     * doing it on time, and that difference is what adherence is made of.
+     */
+    fun markDone(subTask: SubTask, assignedSlot: TimeInterval?) {
+        viewModelScope.launch {
+            goals.setSubTaskDone(
+                subTask = subTask,
+                done = true,
+                orderIndex = 0,
+                now = now(),
+                assignedSlot = assignedSlot,
+            )
+        }
+    }
+
+    /** Records that scheduled work did not happen, and offers to replan. */
+    fun markMissed(taskId: String, taskTitle: String, assignedSlot: TimeInterval) {
+        viewModelScope.launch {
+            adherence.recordMiss(taskId, taskTitle, assignedSlot, now())
+        }
+    }
 
     /**
-     * Answers an outstanding proposal.
+     * Accepts a warning and asks for a different plan.
      *
-     * All three responses go through here, including Decline: "no" is a real
-     * answer that closes the question, not an absence of one.
+     * This only raises the event. The proposal that follows still arrives with
+     * Accept / Decline / Propose different, so agreeing to be replanned is not
+     * the same as agreeing to the replan.
      */
+    fun requestReshuffleFor(trip: GuiltTrip) {
+        viewModelScope.launch {
+            reshuffle.record(
+                ScheduleInvalidatingEvent.ManualEdit(
+                    occurredAt = now(),
+                    summary = "you asked for a different plan for ${trip.goalTitle}",
+                ),
+            )
+            dismissGuiltTrip(trip.goalId)
+        }
+    }
+
+    /** Hides a warning for this session without pretending it was resolved. */
+    fun dismissGuiltTrip(goalId: String) {
+        dismissedGuiltTrips.value = dismissedGuiltTrips.value + goalId
+    }
+
+    /** Answers an outstanding proposal. Decline is a real answer, not an absence. */
     fun respond(proposalId: String, response: ReshuffleResponse) {
         viewModelScope.launch { reshuffle.respond(proposalId, response, now()) }
     }
@@ -178,5 +304,7 @@ data class TodayUiState(
     val sleepStop: SleepStopDecision? = null,
     val interrupt: InterruptPlan? = null,
     val proposal: ProposalUiState? = null,
+    val guiltTrips: List<GuiltTrip> = emptyList(),
+    val subTasksById: Map<String, SubTask> = emptyMap(),
     val hasAnyInput: Boolean = false,
 )

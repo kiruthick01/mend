@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mend.app.ui.components.GuiltTripCard
 import com.mend.app.ui.components.ReshuffleProposalCard
 import com.mend.app.ui.mendViewModel
 import com.mend.engine.allocation.DaySchedule
@@ -36,6 +38,7 @@ import com.mend.engine.allocation.TaskPlacement
 import com.mend.engine.allocation.TimelineEntry
 import com.mend.engine.allocation.UnscheduledTask
 import com.mend.engine.model.StaticBlock
+import com.mend.engine.model.SubTask
 import com.mend.engine.recovery.SleepStopAction
 import com.mend.engine.recovery.SleepStopDecision
 import com.mend.engine.model.TaskType
@@ -60,6 +63,7 @@ fun TodayScreen() {
             goals = app.goalRepository,
             recovery = app.recoveryRepository,
             reshuffle = app.reshuffleRepository,
+            adherence = app.adherenceRepository,
         )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -71,6 +75,16 @@ fun TodayScreen() {
         state.interrupt?.let { InterruptBanner(it) }
 
         state.sleepStop?.let { SleepBanner(it) }
+
+        state.guiltTrips.forEach { trip ->
+            GuiltTripCard(
+                message = trip.message,
+                reshuffleRequest = trip.reshuffleRequest,
+                onRequestReshuffle = { viewModel.requestReshuffleFor(trip) },
+                onDismiss = { viewModel.dismissGuiltTrip(trip.goalId) },
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
 
         state.proposal?.let { proposal ->
             ReshuffleProposalCard(
@@ -89,7 +103,12 @@ fun TodayScreen() {
         if (schedule == null || !state.hasAnyInput) {
             EmptyDay()
         } else {
-            DayTimeline(schedule = schedule)
+            DayTimeline(
+                schedule = schedule,
+                subTasksById = state.subTasksById,
+                onMarkDone = viewModel::markDone,
+                onMarkMissed = viewModel::markMissed,
+            )
         }
     }
 }
@@ -223,7 +242,12 @@ private fun EmptyDay() {
  * merge of three already-consistent lists rather than a reconciliation.
  */
 @Composable
-private fun DayTimeline(schedule: DaySchedule) {
+private fun DayTimeline(
+    schedule: DaySchedule,
+    subTasksById: Map<String, SubTask>,
+    onMarkDone: (SubTask, TimeInterval?) -> Unit,
+    onMarkMissed: (String, String, TimeInterval) -> Unit,
+) {
     val rows = buildRows(schedule)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -233,7 +257,12 @@ private fun DayTimeline(schedule: DaySchedule) {
         items(rows, key = { it.key }) { row ->
             when (row) {
                 is Row.Fixed -> FixedRow(row.entry)
-                is Row.Work -> WorkRow(row.entry)
+                is Row.Work -> WorkRow(
+                    entry = row.entry,
+                    subTask = subTasksById[row.entry.task.id],
+                    onMarkDone = onMarkDone,
+                    onMarkMissed = onMarkMissed,
+                )
                 is Row.Free -> FreeRow(row.interval)
             }
         }
@@ -268,15 +297,48 @@ private fun FixedRow(entry: TimelineEntry.Fixed) {
     )
 }
 
+/**
+ * One slice of scheduled goal work, with the two actions that produce
+ * adherence signal.
+ *
+ * Both are offered, and neither is assumed. Marking something missed is as
+ * much a real answer as marking it done — without it the stream only ever
+ * records success, adherence never degrades, and every behavioural feature
+ * downstream quietly reports that everything is fine.
+ */
 @Composable
-private fun WorkRow(entry: TimelineEntry.Work) {
-    TimelineRow(
-        interval = entry.interval,
-        accent = MaterialTheme.colorScheme.tertiary,
-        barHeight = 44.dp,
-        title = entry.task.title,
-        subtitle = workSubtitle(entry),
-    )
+private fun WorkRow(
+    entry: TimelineEntry.Work,
+    subTask: SubTask?,
+    onMarkDone: (SubTask, TimeInterval?) -> Unit,
+    onMarkMissed: (String, String, TimeInterval) -> Unit,
+) {
+    Column {
+        TimelineRow(
+            interval = entry.interval,
+            accent = MaterialTheme.colorScheme.tertiary,
+            barHeight = 44.dp,
+            title = entry.task.title,
+            subtitle = workSubtitle(entry),
+        )
+        Row(
+            modifier = Modifier.padding(start = 74.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (subTask != null) {
+                TextButton(onClick = { onMarkDone(subTask, entry.interval) }) {
+                    Text("Done")
+                }
+            }
+            TextButton(
+                onClick = {
+                    onMarkMissed(entry.task.id, entry.task.title, entry.interval)
+                },
+            ) {
+                Text("Missed")
+            }
+        }
+    }
 }
 
 @Composable

@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Phases 0 through 4 are complete, verified and committed.**
+**Phases 0 through 5 are complete, verified and committed.**
 
 | Phase | Status | Commit |
 | --- | --- | --- |
@@ -11,10 +11,11 @@
 | 2 — Goals, lessons, sub-tasks, progress | Complete | `ffc3bdd` |
 | 3 — Priority scoring & slot allocation | Complete | `8620a66` |
 | 4 — Reshuffling, interrupts, protected sleep | Complete | `f0a10c2` |
-| 5+ | Not started | — |
+| 5 — Adherence logging & guilt-trip trigger | Complete | see log below |
+| 6+ | Not started | — |
 
 `./gradlew clean test assembleDebug` from an empty build directory:
-**295 tests, 0 failures**, debug APK produced. No commit carries an AI
+**375 tests, 0 failures**, debug APK produced. No commit carries an AI
 co-author, collaborator or generated-by trailer, and no tracked file mentions
 one — audited after every commit.
 
@@ -57,13 +58,13 @@ question 1 under "Needs your input".**
 
 ## Needs your input
 
-Eleven open questions, most-consequential first. Most are places where the
+Thirteen open questions, most-consequential first. Most are places where the
 plan did not answer something I needed, so I picked a defensible default,
 implemented it behind a named constant or a field, and wrote it down here
 rather than letting it pass silently.
 
-Questions 9-11 are new in Phase 4 and are recorded in that phase's section
-below; question 9 in particular is worth reading first.
+Questions 9-11 are new in Phase 4 and 12-13 in Phase 5; each is recorded in
+that phase's section below. Question 9 in particular is worth reading first.
 
 ### 1. Was installing a toolchain on this machine acceptable?
 
@@ -170,7 +171,7 @@ reshuffle concern, but tell me if you meant it to differ now.
 
 ## What I did NOT get to, and why
 
-- **Phase 5 onward.** Not started.
+- **Phase 6 onward.** Not started.
 - **Any run on real hardware.** No emulator image and no attached device. This
   is the most important untested surface — see "What to review first".
 - **Instrumented Room tests.** Persistence is covered by mapper round-trip
@@ -778,3 +779,135 @@ Worth a reminder in Phase 9.
   largest untested surface: no emulator image, no attached hardware.
 - **Still no instrumented Room tests**, now covering eight tables rather than
   five.
+
+---
+
+## Phase 5 — Adherence Logging & Guilt-Trip Triggers
+
+**Status: COMPLETE** (clean build from scratch passes, 375 tests pass, committed)
+
+### Deliverables checklist
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 5.1 | Adherence logging on every goal sub-task completion | **PASS** | `GoalRepository.setSubTaskDone` writes through `AdherenceRepository`, from both the Today screen and the goal detail screen |
+| 5.2 | Adherence logging on every miss | **PASS** | Two paths: a `Missed` action on each scheduled row, and an automatic sweep (`detectElapsedMisses`) for slots that pass unmarked |
+| 5.3 | Wired for interrupts too | **PASS** | An interrupt is a `GoalTask` from a one-shot goal, so it flows through the same completion and miss paths as any other scheduled work |
+| 5.4 | Wired for protected recovery / sleep | **PASS** | `RecoveryRepository.recordWake` writes an adherence row alongside the `SleepLogEntry`, so sleep appears in app-wide stats without losing the sleep-specific detail |
+| 5.5 | Rolling adherence rate per task | **PASS** | `computeAdherence(log, taskId, asOf, windowDays)`; 14-day window by default, edges tested |
+| 5.6 | Rolling adherence rate per task-type | **PASS** | `computeAdherenceByType` groups by the user's own type names |
+| 5.7 | Delay-pattern computation | **PASS** | Mean, mean-when-late, median, worst, and a `DelayTrend` of WORSENING / STABLE / IMPROVING / UNKNOWN |
+| 5.8 | Guilt-trip fires only for `IRL_BINDING` | **PASS** | First gate in `evaluateGuiltTrip`; soft goals and no-consequence goals tested explicitly |
+| 5.9 | Based on projected pace vs deadline | **PASS** | `projectPace` derives velocity from honoured slots in the adherence log and compares capacity to remaining effort |
+| 5.10 | Message states progress so far | **PASS** | "0 of 4 lessons done, 0/2 sub-tasks" |
+| 5.11 | Message states days remaining | **PASS** | "5 days left", with "The deadline is today" and "One day left" as special cases |
+| 5.12 | Message states why the projection misses | **PASS** | "600m of work left, 5d until the deadline. At the 30m/day you have actually been doing, that is 150m of capacity — 450m short." |
+| 5.13 | Message ends with a request to reshuffle | **PASS** | `GuiltTrip.reshuffleRequest`; "Yes, replan" raises an event that routes into the Phase 4 proposal flow |
+| 5.14 | Habits excluded | **PASS** | Structurally impossible: habits are not in the goal hierarchy and carry no consequence type, so they cannot reach the trigger |
+| 5.15 | Soft goals excluded | **PASS** | Turned away at gate 1; tested against a goal far enough behind that it would otherwise fire |
+
+### Constraints checklist
+
+| Constraint | Result | How it is enforced |
+| --- | --- | --- |
+| Based on actual logged history | **PASS** | Velocity is the sum of honoured slot durations from the log, divided by observed days. Nothing is inferred from intentions or estimates |
+| Based on projected velocity, not vagueness | **PASS** | Three numeric gates. With no history the trigger stays silent even when the deadline is arithmetically impossible — tested |
+| Precision keeps it from becoming noise | **PASS** | Needs ≥3 active days **and** ≥3 completions. Misses alone do not qualify: a task never once done gives nothing to project a rate from |
+| Not a vague "you haven't done this in a while" | **PASS** | A test asserts the message contains none of "lazy", "should have", "disappointing", "failure", "again" — it states consequence, not disapproval |
+| Engine stays pure Kotlin | **PASS** | `grep -rn "import android" scheduling-engine/src/` finds nothing |
+
+### Test results
+
+| Suite | Tests | Passed | Failed |
+| --- | --- | --- | --- |
+| `:scheduling-engine:test` | 275 | 275 | 0 |
+| `:app:testDebugUnitTest` | 100 | 100 | 0 |
+| **Total** | **375** | **375** | **0** |
+
+New this phase: `AdherenceTest` 29, `GuiltTripTest` 25, `MissDetectionTest` 13
+(engine); `AdherenceRepositoryTest` 13 (app).
+
+Verified with `./gradlew clean test assembleDebug` from an empty build directory.
+
+### One real bug the tests caught
+
+`AdherenceStats.describe()` rendered "N late by Xm on average" where X was the
+mean delay across *all* completed sessions, on-time zeros included — so three
+punctual sessions and one 30-minute slip reported "1 late by 7m on average".
+The sentence and the number were answering different questions. Fixed by adding
+`averageDelayWhenLateMinutes` ("when it slips, by how much?") alongside
+`averageDelayMinutes` ("how late is this work typically"). Both are kept: they
+are genuinely different and both are useful.
+
+One test failure was mine rather than the code's — a fixture gave two goals
+different sub-task ids, so one correctly had no history to project from.
+
+### Decisions I had to make (not specified in PROJECT_PLAN.md)
+
+1. **Late counts as honoured; missed does not.** `adherenceRate` is
+   completed/total, with punctuality reported separately. Being twenty minutes
+   late is a punctuality problem and not turning up is a different one;
+   collapsing them would hide which is actually happening.
+2. **A task with no history scores 1.0, not 0.0.** Assuming the worst about
+   work that has never been scheduled would poison the priority score with a
+   behavioural claim nothing supports.
+3. **14-day rolling window, hard-edged.** Entries outside it are dropped
+   entirely rather than weighted down — a weighted average is much harder to
+   check by hand, and checkability is the requirement here.
+4. **Velocity comes from assigned-slot durations of honoured entries**, spread
+   over the observed span rather than the nominal window. Two weeks of history
+   and two days of it both get an honest denominator.
+5. **Projection gates: ≥3 active days and ≥3 completions.** Both invented.
+   Without them the first missed session on a new goal would trigger a warning,
+   which is exactly the noise the constraint forbids. **Question 12 below.**
+6. **Delay trend compares the two halves of the window**, with a 5-minute
+   sensitivity floor. Crude on purpose: a regression line would look more
+   rigorous and be far harder to explain when it disagreed with what the user
+   can see in their own history.
+7. **Work completed with no assigned slot is recorded as on time.** Something
+   ticked off from the goal screen that was never scheduled cannot be late for
+   an appointment it never had. It still gets a synthetic slot so it counts
+   towards velocity.
+8. **Un-ticking a sub-task writes nothing.** The stream is append-only, so a
+   row for an action the user is in the middle of undoing would be permanent.
+9. **Sleep writes to both streams.** `SleepLogEntry` keeps the sleep-specific
+   detail (bedtime drift, shortfall); the adherence row carries the uniform
+   honoured/missed signal so protected recovery appears in app-wide statistics.
+   A night more than 2 hours past target bedtime is recorded as MISSED.
+   **Question 13 below.**
+10. **A dismissed warning is session-only.** "Not now" hides it until the app
+    restarts; it is not persisted and is not treated as resolved.
+11. **Guilt trips are ordered by deadline, not by size of shortfall.** A small
+    gap on something due Friday matters more than a large one due next month.
+
+### Needs your input (new this phase)
+
+**12. The projection gates are invented.** ≥3 active days and ≥3 completions
+before a warning can fire. Too strict and a genuinely doomed deadline stays
+quiet for a week; too loose and one bad Tuesday triggers a lecture. These are
+the numbers most worth tuning once you have used it for a fortnight.
+
+**13. Two hours late to bed counts as a missed night.** Also invented
+(`MISSED_BEDTIME_THRESHOLD_MINUTES`). Is that the right line for you, given
+fixing chronic late-night work is a stated goal of the project?
+
+### Not done in this phase
+
+- **Missed-work sweeps cover today only.** `detectElapsedMisses` runs against
+  the live schedule while the app is open. Days the app was never opened are
+  not back-filled, because that needs either stored schedules or a background
+  job — Phase 8 work, and the third time this same gap has surfaced.
+- **`adherenceTrend` still does not feed the priority score.** `GoalTask`
+  carries the field and the allocator weights it, but every task is still
+  constructed with the neutral 0.5. Wiring the computed rate in is Phase 6's
+  adaptive-weights work, and doing it here would have changed scheduling
+  behaviour ahead of the phase that is supposed to introduce it.
+- **Fragility is computed but still not surfaced.** `assessFragility` now has a
+  real stream to read, but nothing in the UI offers to negotiate a delay yet.
+- **No adherence statistics screen.** The stats are computed and tested, and
+  the guilt trip consumes them, but there is no view showing adherence per task
+  or per type. Nothing in the Phase 5 deliverables asks for one; Phase 6 adds a
+  Settings screen where it would naturally live.
+- **Still nothing run on a device.** Unchanged since Phase 3, and now the
+  largest untested surface by a considerable margin: nine tables, five
+  repositories, and a Today screen with four distinct banner states.

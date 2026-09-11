@@ -2,6 +2,7 @@ package com.mend.app
 
 import android.app.Application
 import com.mend.app.data.MendDatabase
+import com.mend.app.repository.AdherenceRepository
 import com.mend.app.repository.GoalRepository
 import com.mend.app.repository.RecoveryRepository
 import com.mend.app.repository.ReshuffleRepository
@@ -15,10 +16,15 @@ class MendApplication : Application() {
         StaticLayerRepository(database.taskDao(), reshuffleRepository)
     }
 
+    val adherenceRepository: AdherenceRepository by lazy {
+        AdherenceRepository(database.adherenceLogDao(), reshuffleRepository)
+    }
+
     val recoveryRepository: RecoveryRepository by lazy {
         RecoveryRepository(
             taskDao = database.taskDao(),
             sleepLogDao = database.sleepLogDao(),
+            adherence = adherenceRepository,
         )
     }
 
@@ -35,6 +41,7 @@ class MendApplication : Application() {
             lessonDao = database.lessonDao(),
             subTaskDao = database.subTaskDao(),
             reshuffle = reshuffleRepository,
+            adherence = adherenceRepository,
         )
     }
 }

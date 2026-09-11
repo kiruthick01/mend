@@ -8,6 +8,7 @@ import com.mend.app.data.mapper.toProtectedRecovery
 import com.mend.engine.model.ProtectedRecovery
 import com.mend.engine.model.TaskType
 import com.mend.engine.recovery.SleepLogEntry
+import com.mend.engine.time.TimeInterval
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.map
 class RecoveryRepository(
     private val taskDao: TaskDao,
     private val sleepLogDao: SleepLogDao,
+    private val adherence: AdherenceRepository? = null,
 ) {
 
     fun observeProtectedRecovery(): Flow<List<ProtectedRecovery>> =
@@ -60,16 +62,53 @@ class RecoveryRepository(
         )
     }
 
-    /** Records when you actually got up, completing the night begun on [date]. */
+    /**
+     * Records when you actually got up, completing the night begun on [date].
+     *
+     * A completed night also writes one row to the app-wide adherence stream.
+     * The two are not redundant: SleepLogEntry carries the detail specific to
+     * sleep - bedtime drift, shortfall against target - while the adherence
+     * entry carries the uniform honoured/missed signal, so protected recovery
+     * shows up in app-wide statistics alongside everything else, which is what
+     * PROJECT_PLAN.md Phase 5 asks for.
+     */
     suspend fun recordWake(
         date: LocalDate,
         block: ProtectedRecovery,
         actual: LocalDateTime,
     ) {
-        val existing = sleepLogDao.forDate(date)?.toDomain()
-        sleepLogDao.upsert(
-            (existing ?: newNight(date, block)).copy(actualWake = actual).toEntity(),
-        )
+        val night = (sleepLogDao.forDate(date)?.toDomain() ?: newNight(date, block))
+            .copy(actualWake = actual)
+        sleepLogDao.upsert(night.toEntity())
+
+        if (!night.isComplete) return
+
+        val slot = TimeInterval(night.targetBedtime, night.targetWake)
+        val drift = night.bedtimeDriftMinutes ?: 0
+
+        if (drift >= MISSED_BEDTIME_THRESHOLD_MINUTES) {
+            adherence?.recordMiss(
+                taskId = block.id,
+                taskTitle = block.title,
+                assignedSlot = slot,
+                now = actual,
+            )
+        } else {
+            adherence?.recordCompletion(
+                taskId = block.id,
+                assignedSlot = slot,
+                completedAt = night.actualBedtime ?: night.targetBedtime,
+                estimatedDuration = night.targetDuration,
+            )
+        }
+    }
+
+    companion object {
+        /**
+         * Past this much later than target, bedtime was not merely missed by a
+         * margin - it was not observed at all.
+         */
+        const val MISSED_BEDTIME_THRESHOLD_MINUTES: Long = 120
     }
 
     private fun newNight(date: LocalDate, block: ProtectedRecovery) = SleepLogEntry(
