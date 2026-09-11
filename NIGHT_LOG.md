@@ -606,3 +606,167 @@ removed and the test passes.
   emulator image installed on this machine and no device attached.
   **This is the single biggest gap in tonight's work — see the summary.**
 - Still no instrumented Room tests, as in Phases 1 and 2.
+
+---
+
+## Phase 4 — Reshuffling, Interrupts & Protected Sleep
+
+**Status: COMPLETE** (clean build from scratch passes, 295 tests pass, committed)
+
+### Deliverables checklist
+
+#### Reshuffle flow
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 4.1 | Triggered by a schedule-invalidating event | **PASS** | `ScheduleInvalidatingEvent` — `DeadlineAdded`, `DeadlineChanged`, `TaskMissed`, `ManualEdit` |
+| 4.2 | Deadline added/changed detected | **PASS** | `GoalRepository.saveGoal` compares the stored deadline and records an event only when it actually moved |
+| 4.3 | Manual edit detected | **PASS** | `StaticLayerRepository` records add/change/remove of blocks and habits |
+| 4.4 | Task missed detected | **PARTIAL — see below** | The event type exists and is handled end to end, but nothing yet *emits* it: marking a task missed is Phase 5's "wire AdherenceLogEntry into every completion/miss event app-wide" |
+| 4.5 | Proposed schedule for tomorrow onward | **PASS** | `buildProposal` rejects any proposal dated before `effectiveDateFor(today)`; tested |
+| 4.6 | Exactly three options in the UI | **PASS** | `ReshuffleProposalCard` — Accept, Decline, Propose different. No dismiss, no swipe-away |
+| 4.7 | Propose Different free text stored for now | **PASS** | Stored verbatim in `reshuffle_proposals.response_text`; the dialog says plainly that Mend cannot act on it yet |
+
+#### Emergency interrupt
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 4.8 | `is_one_shot && (deadline today \|\| no future free slot)` | **PASS** | `qualifyAsInterrupt`; all four branches tested, including the boundary where free time exactly equals the need (does not qualify) |
+| 4.9 | Becomes the mandatory next action | **PASS** | `planInterrupt` claims the next free interval from `now`; surfaced as the topmost banner on Today |
+| 4.10 | Assigned time or negotiated delay limit | **PASS** | A slot when one fits; the largest remaining interval plus a `negotiatedDelayLimit` for the shortfall when not; a pure delay limit when the day has nothing left |
+| 4.11 | Overrun message explaining what today loses | **PASS** | `describeOverrun` names each displaced task with its lost minutes and a total |
+| 4.12 | Interrupts claim free time only, never static blocks | **PASS** | Drawn from `freeTimeMap.free`, which already excludes blocks, habits and sleep. Tested against college hours and against a habit |
+
+#### Protected sleep
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 4.13 | `PROTECTED_RECOVERY` type implemented | **PASS** | `ProtectedRecovery` — a `ScheduleEntry`, deliberately **not** `Schedulable`, so it can never be ranked or bin-packed |
+| 4.14 | Decide hard stop vs nudge, implement hard stop | **PASS** | Hard stop is the default and is what the allocator enforces; nudge is available per block |
+| 4.15 | Threshold configurable | **PASS** | `windDown` per block, default 30m, editable in Settings. The boundary is `bedtime - windDown` |
+| 4.16 | Overrunning work deferred to tomorrow | **PASS** | Two mechanisms: the allocator cannot place work past the boundary at all, and `evaluateSleepStop` returns `STOP` for work still running |
+| 4.17 | Log actual vs target sleep as its own adherence stream | **PASS** | `SleepLogEntry` + `sleep_log` table, entirely separate from `adherence_log`. It has no `taskId`, so sleep cannot be filed as a missed task even by accident |
+
+#### Delay negotiation tier
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 4.18 | `pileup_risk` + skip-count logic | **PASS** | `assessFragility` counts `MISSED` outcomes from the append-only log; `FRAGILE_SKIP_THRESHOLD = 2` |
+| 4.19 | Only fragile, sequential work becomes eligible | **PASS** | Both halves required. Parallelisable work is never eligible however often it is skipped — tested at four skips |
+| 4.20 | `negotiated_delay_limit` as last resort, not default | **PASS** | `negotiateDelay` refuses by default and names why; grants are capped at 2 days, because an unbounded delay is a cancellation with better manners |
+
+### Constraints checklist
+
+| Constraint | Result | How it is enforced |
+| --- | --- | --- |
+| New schedules take effect tomorrow, never retroactively | **PASS** | `buildProposal` throws if the proposed date is before `effectiveDateFor(today)`. One function owns the rule so it cannot be quietly broken elsewhere |
+| Except the interrupt, which is real-time | **PASS** | Interrupts bypass the proposal flow entirely and act on today |
+| Reshuffle prompts must not become noise | **PASS** | Three separate guards: same-day events batch into one proposal (`batchEvents`); no new proposal is created while one is unanswered; only a deadline that *actually moved* counts, so renaming a goal prompts nothing |
+| Sleep can compete with and override goal work | **PASS** | `sleep beats outstanding work for the late evening` — 20h of work wanted, the evening still ends at the boundary |
+| Engine stays pure Kotlin | **PASS** | `grep -rn "import android" scheduling-engine/src/` finds nothing; classpath check clean |
+
+### Test results
+
+| Suite | Tests | Passed | Failed |
+| --- | --- | --- | --- |
+| `:scheduling-engine:test` | 208 | 208 | 0 |
+| `:app:testDebugUnitTest` | 87 | 87 | 0 |
+| **Total** | **295** | **295** | **0** |
+
+New this phase: `SleepProtectionTest` 27, `ReshuffleTest` 23, `InterruptTest` 20,
+`FragilityTest` 16 (engine); `Phase4MappersTest` 24, `InterruptDetectionTest` 13 (app).
+
+Verified with `./gradlew clean test assembleDebug` from an empty build directory.
+
+### Two real bugs the tests caught
+
+Both were in my code, not the tests:
+
+1. **`planInterrupt` drew from the wrong pool.** I had it take from
+   `remainingFree` — what the allocator left over — which meant an interrupt
+   could never displace goal work, making the `displaced` field dead code and
+   contradicting the plan's own overrun message ("here's what you're now
+   losing today"), which only means something if displacement can happen. Now
+   it draws from `freeTimeMap.free`: goal work is displaceable, fixed
+   commitments are not. It also accepted a one-minute sliver as a valid slot;
+   it now applies the same `MINIMUM_USEFUL_SLICE` floor the allocator uses.
+2. **`describeOverrun` undercounted.** It matched scheduled work by *start*
+   time, so a task straddling the end of the interrupt's slot was reported as
+   fully intact when half of it was already gone. Now measured by interval
+   overlap.
+
+### Decisions I had to make (not specified in PROJECT_PLAN.md)
+
+1. **The hard stop bites at `bedtime - windDown`, not at bedtime.** Work still
+   running when the block opens has already cost sleep, so enforcing at bedtime
+   itself would be enforcing too late. Default wind-down 30 minutes,
+   configurable per block as the plan requires.
+2. **A night that crosses midnight occupies two intervals on one calendar
+   day** — the tail of last night and the head of tonight. That is genuinely
+   what the day looks like; collapsing it would hide half the protected time.
+3. **Sleep is its own stream with no `taskId`.** The plan says "its own
+   adherence stream"; making it structurally incapable of holding a task id
+   means the two can never be conflated.
+4. **A night counts as on target within 15 minutes** (`BEDTIME_ON_TARGET_SLACK_MINUTES`).
+   Arbitrary but named and adjustable.
+5. **At most one interrupt at a time.** Two simultaneous "mandatory next
+   actions" is a contradiction; the most overdue wins. If the category ever
+   routinely produced several it would mean the qualification test had stopped
+   being narrow enough to mean anything.
+6. **Free time exactly equal to the need does not qualify as an emergency.**
+   Strictly less than. A task that fits, fits.
+7. **`FRAGILE_SKIP_THRESHOLD = 2`**, from the plan's "skipped once/twice".
+   **`MAX_NEGOTIATED_DELAY = 2 days`** is mine, not the plan's.
+8. **Delay eligibility is derived from the adherence log, not a stored flag.**
+   `Goal.pileupRisk` still exists per Section 3, but `assessFragility` reads
+   the append-only history instead. A flag can be set by anything; a history
+   cannot be argued with.
+9. **`Goal.isSequential` added.** The plan names "sequential/non-parallelizable"
+   as half the eligibility test but Section 3 has no such field. Exposed in the
+   goal editor as "Lessons must be done in order".
+10. **Event rows store their rendered summary.** Reading one back produces a
+    `ManualEdit` carrying that text. Batching and display only ever use
+    `occurredAt` and `describe()`, so persisting every field of every variant
+    to rebuild an identical string would be machinery for nothing.
+11. **The proposed schedule is not stored**, only the negotiation. It is
+    recomputed deterministically from the same inputs, so a stored copy could
+    only fall out of step.
+12. **`fallbackToDestructiveMigration()` on the database bump to v2.** The app
+    has never shipped. Flagged in the code and below as something that **must**
+    be replaced before release.
+
+### Needs your input (new this phase)
+
+**9. Decline does not currently mean "keep the old plan".** This is the one
+place Phase 4 is semantically thinner than it looks, and it is worth your
+attention. Schedules are derived, not stored — so if a deadline moves, tomorrow
+is recomputed whether or not you accept the proposal. Decline therefore means
+"acknowledged, stop asking", not "revert". Making it mean revert requires
+pinning an accepted schedule per date, which is real work and a design decision
+I did not want to make for you. It is the same schedule-persistence gap I
+flagged at the end of Phase 3, now actually biting.
+
+**10. `MAX_NEGOTIATED_DELAY` is 2 days.** Invented. Is that the right ceiling
+for the kind of work you are modelling?
+
+**11. Destructive migration is armed.** Database v2 drops and recreates on
+schema change. Fine now, unacceptable once you have real adherence history —
+losing it would destroy the basis of every behavioural feature from Phase 5 on.
+Worth a reminder in Phase 9.
+
+### Not done in this phase
+
+- **`TaskMissed` events are never emitted.** The whole path exists and is
+  tested, but nothing marks a task as missed yet. That is explicitly Phase 5's
+  first deliverable.
+- **Fragility is engine-only.** `assessFragility` and `negotiateDelay` are
+  written and tested but not called from the app, because they read the
+  adherence log and nothing writes to it until Phase 5.
+- **Sleep times are never recorded automatically.** `RecoveryRepository` has
+  `recordBedtime`/`recordWake` and the trend renders in Settings, but there is
+  no UI to log a night and no alarm to prompt one. Automatic capture needs the
+  Phase 8 alarm infrastructure.
+- **Still nothing run on a device.** Unchanged from Phase 3 and still the
+  largest untested surface: no emulator image, no attached hardware.
+- **Still no instrumented Room tests**, now covering eight tables rather than
+  five.

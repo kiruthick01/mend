@@ -4,6 +4,7 @@ import com.mend.engine.model.ConsequenceType
 import com.mend.engine.model.Flexibility
 import com.mend.engine.model.GoalTask
 import com.mend.engine.model.Habit
+import com.mend.engine.model.ProtectedRecovery
 import com.mend.engine.model.StaticBlock
 import com.mend.engine.model.TimeSpec
 import com.mend.engine.model.UnitDuration
@@ -103,4 +104,22 @@ fun goalTask(
     deadline = date.plusDays(deadlineIn),
     manualImportance = importance,
     adherenceTrend = adherenceTrend,
+)
+
+fun sleep(
+    id: String = "sleep",
+    title: String = "Sleep",
+    bedtime: LocalTime,
+    wake: LocalTime,
+    windDownMinutes: Long = 30,
+    hardStop: Boolean = true,
+    days: Set<DayOfWeek> = StaticBlock.ALL_DAYS,
+): ProtectedRecovery = ProtectedRecovery(
+    id = id,
+    title = title,
+    daysOfWeek = days,
+    bedtime = bedtime,
+    wakeTime = wake,
+    windDown = Duration.ofMinutes(windDownMinutes),
+    hardStop = hardStop,
 )

@@ -2,6 +2,7 @@ package com.mend.engine.freetime
 
 import com.mend.engine.model.Habit
 import com.mend.engine.model.ScheduleEntry
+import com.mend.engine.model.ProtectedRecovery
 import com.mend.engine.model.StaticBlock
 import com.mend.engine.model.WindowAnchor
 import com.mend.engine.time.Intervals
@@ -53,7 +54,13 @@ data class EntryPlacement(
  *     anchored to the [WindowAnchor.EARLIEST] or [WindowAnchor.LATEST] end of
  *     the window. The rest of the window stays free.
  *  5. A **habit** occupies `timeOfDay` for its duration.
- *  6. Free time is the day minus the union of all of the above. Overlapping
+ *  6. **Protected recovery** (sleep) occupies its block, which normally runs
+ *     through midnight and so appears twice on one calendar day: the tail of
+ *     last night, and the head of tonight. Work must stop a configurable
+ *     wind-down before it opens, so the block is extended backwards by that
+ *     much — the hard stop is at `bedtime - windDown`, because work still
+ *     running when the block opens has already missed bedtime.
+ *  7. Free time is the day minus the union of all of the above. Overlapping
  *     and back-to-back occupied spans are merged, so no zero-width slivers
  *     survive into the free map.
  *
@@ -67,6 +74,7 @@ fun computeFreeTimeMap(
     date: LocalDate,
     staticBlocks: List<StaticBlock> = emptyList(),
     habits: List<Habit> = emptyList(),
+    protectedRecovery: List<ProtectedRecovery> = emptyList(),
     dayStart: LocalTime = LocalTime.MIDNIGHT,
     dayEnd: LocalTime? = null,
 ): FreeTimeMap {
@@ -90,6 +98,11 @@ fun computeFreeTimeMap(
             .filter { it.appliesOn(weekday) }
             .sortedBy { it.timeOfDay }
             .forEach { habit -> placeHabit(habit, date, bounds)?.let { add(it) } }
+
+        protectedRecovery
+            .filter { it.appliesOn(weekday) }
+            .sortedBy { it.bedtime }
+            .forEach { recovery -> addAll(placeRecovery(recovery, date, bounds)) }
     }.sortedBy { it.interval }
 
     val occupied = Intervals.normalize(placements.map { it.interval })
@@ -158,3 +171,50 @@ private fun placeHabit(
             "never ranked, never reshuffled",
     )
 }
+
+/**
+ * Lays down a protected recovery block, extended backwards by its wind-down.
+ *
+ * A night that crosses midnight produces two placements on one calendar day,
+ * which is genuinely what the day looks like; collapsing them would hide half
+ * the protected time.
+ */
+private fun placeRecovery(
+    recovery: ProtectedRecovery,
+    date: LocalDate,
+    bounds: TimeInterval,
+): List<EntryPlacement> =
+    recovery.intervalsOn(date).mapNotNull { raw ->
+        // Only the evening half starts at bedtime, so only that half gets the
+        // wind-down pulled in front of it.
+        val startsAtBedtime = raw.start.toLocalTime() == recovery.bedtime
+        val interval = if (startsAtBedtime && !recovery.windDown.isZero) {
+            TimeInterval(raw.start.minus(recovery.windDown), raw.end)
+        } else {
+            raw
+        }
+
+        interval.intersect(bounds)?.let { clipped ->
+            EntryPlacement(
+                entry = recovery,
+                interval = clipped,
+                reason = buildString {
+                    append("protected recovery ")
+                    append("${recovery.bedtime}-${recovery.wakeTime}")
+                    if (startsAtBedtime && !recovery.windDown.isZero) {
+                        append("; opens ${recovery.windDown.toMinutes()}m early for wind-down, ")
+                        append("so work must stop by ${interval.start.toLocalTime()}")
+                    } else {
+                        append("; the tail of the previous night")
+                    }
+                    append(
+                        if (recovery.hardStop) {
+                            "; hard stop, overrunning work is deferred"
+                        } else {
+                            "; nudge only, overrunning work is not forced to stop"
+                        },
+                    )
+                },
+            )
+        }
+    }

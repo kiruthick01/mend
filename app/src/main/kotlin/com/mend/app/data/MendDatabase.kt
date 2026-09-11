@@ -8,11 +8,17 @@ import androidx.room.TypeConverters
 import com.mend.app.data.dao.AdherenceLogDao
 import com.mend.app.data.dao.GoalDao
 import com.mend.app.data.dao.LessonDao
+import com.mend.app.data.dao.ReshuffleProposalDao
+import com.mend.app.data.dao.ScheduleEventDao
+import com.mend.app.data.dao.SleepLogDao
 import com.mend.app.data.dao.SubTaskDao
 import com.mend.app.data.dao.TaskDao
 import com.mend.app.data.entity.AdherenceLogEntity
 import com.mend.app.data.entity.GoalEntity
 import com.mend.app.data.entity.LessonEntity
+import com.mend.app.data.entity.ReshuffleProposalEntity
+import com.mend.app.data.entity.ScheduleEventEntity
+import com.mend.app.data.entity.SleepLogEntity
 import com.mend.app.data.entity.SubTaskEntity
 import com.mend.app.data.entity.TaskEntity
 
@@ -27,8 +33,11 @@ import com.mend.app.data.entity.TaskEntity
         LessonEntity::class,
         SubTaskEntity::class,
         AdherenceLogEntity::class,
+        SleepLogEntity::class,
+        ScheduleEventEntity::class,
+        ReshuffleProposalEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -39,6 +48,9 @@ abstract class MendDatabase : RoomDatabase() {
     abstract fun lessonDao(): LessonDao
     abstract fun subTaskDao(): SubTaskDao
     abstract fun adherenceLogDao(): AdherenceLogDao
+    abstract fun sleepLogDao(): SleepLogDao
+    abstract fun scheduleEventDao(): ScheduleEventDao
+    abstract fun reshuffleProposalDao(): ReshuffleProposalDao
 
     companion object {
         private const val DATABASE_NAME = "mend.db"
@@ -58,6 +70,13 @@ abstract class MendDatabase : RoomDatabase() {
                 DATABASE_NAME,
             )
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+                // Pre-release only. The app has never shipped, so there is no
+                // real data to migrate and writing migrations for a schema
+                // still in motion is wasted work. This MUST be replaced with
+                // real migrations before the first release — losing a user's
+                // adherence history on an update would destroy the one thing
+                // the behavioural features are built on.
+                .fallbackToDestructiveMigration()
                 .build()
     }
 }

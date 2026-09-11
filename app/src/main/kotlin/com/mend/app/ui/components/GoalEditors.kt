@@ -13,6 +13,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -59,6 +61,8 @@ fun GoalEditorDialog(
     var consequence by remember {
         mutableStateOf(existing?.consequenceType ?: ConsequenceType.SOFT_GOAL)
     }
+    var oneShot by remember { mutableStateOf(existing?.isOneShot ?: false) }
+    var sequential by remember { mutableStateOf(existing?.isSequential ?: false) }
 
     val parsedDeadline = deadline.toLocalDateOrNull()
     val parsedTotal = totalLessons.toIntOrNull()
@@ -106,6 +110,21 @@ fun GoalEditorDialog(
                 ImportancePicker(selected = importance, onSelect = { importance = it })
                 ConsequencePicker(selected = consequence, onSelect = { consequence = it })
 
+                SwitchRow(
+                    title = "One-shot",
+                    body = "A single thing that either happens or does not. Only " +
+                        "one-shots can ever become an emergency interrupt.",
+                    checked = oneShot,
+                    onCheckedChange = { oneShot = it },
+                )
+                SwitchRow(
+                    title = "Lessons must be done in order",
+                    body = "Nothing downstream can start until the current lesson " +
+                        "does. Only sequential work can negotiate a delay.",
+                    checked = sequential,
+                    onCheckedChange = { sequential = it },
+                )
+
                 error?.let {
                     Text(
                         text = it,
@@ -126,10 +145,11 @@ fun GoalEditorDialog(
                             deadline = parsedDeadline!!,
                             manualImportance = importance,
                             consequenceType = consequence,
-                            isOneShot = existing?.isOneShot ?: false,
+                            isOneShot = oneShot,
                             totalLessons = parsedTotal!!,
                             lessonsCompleted = 0,
                             pileupRisk = existing?.pileupRisk ?: false,
+                            isSequential = sequential,
                             negotiatedDelayLimit = existing?.negotiatedDelayLimit,
                         ),
                     )
@@ -365,6 +385,30 @@ private fun TypeSuggestions(types: List<String>, onPick: (String) -> Unit) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    body: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

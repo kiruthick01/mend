@@ -9,6 +9,7 @@ import com.mend.engine.model.Goal
 import com.mend.engine.model.Lesson
 import com.mend.engine.model.ProgressStatus
 import com.mend.engine.model.SubTask
+import com.mend.engine.reshuffle.ScheduleInvalidatingEvent
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -30,6 +31,12 @@ class GoalRepository(
     private val goalDao: GoalDao,
     private val lessonDao: LessonDao,
     private val subTaskDao: SubTaskDao,
+    /**
+     * Optional so the repository stays testable on its own. When present,
+     * deadline changes are recorded as schedule-invalidating events and feed
+     * the next reshuffle proposal.
+     */
+    private val reshuffle: ReshuffleRepository? = null,
 ) {
 
     fun observeGoals(): Flow<List<GoalWithLessons>> =
@@ -46,8 +53,32 @@ class GoalRepository(
     fun observeGoal(goalId: String): Flow<GoalWithLessons?> =
         observeGoals().map { all -> all.firstOrNull { it.goal.id == goalId } }
 
-    suspend fun saveGoal(goal: Goal) {
+    suspend fun saveGoal(goal: Goal, now: LocalDateTime = LocalDateTime.now()) {
+        val previous = goalDao.findById(goal.id)
         goalDao.upsert(goal.toEntity(createdAt = System.currentTimeMillis()))
+
+        // Only a deadline that genuinely moved invalidates the plan. Renaming a
+        // goal or nudging its importance does not, and prompting for those
+        // would turn the negotiation into noise.
+        val event = when {
+            previous == null -> ScheduleInvalidatingEvent.DeadlineAdded(
+                occurredAt = now,
+                goalId = goal.id,
+                goalTitle = goal.title,
+                deadline = goal.deadline,
+            )
+
+            previous.deadline != goal.deadline -> ScheduleInvalidatingEvent.DeadlineChanged(
+                occurredAt = now,
+                goalId = goal.id,
+                goalTitle = goal.title,
+                from = previous.deadline,
+                to = goal.deadline,
+            )
+
+            else -> null
+        }
+        event?.let { reshuffle?.record(it) }
     }
 
     suspend fun deleteGoal(goal: Goal) {

@@ -27,6 +27,7 @@ fun GoalEntity.toDomain(lessonsCompleted: Int = 0): Goal = Goal(
     totalLessons = maxOf(totalLessons, lessonsCompleted),
     lessonsCompleted = lessonsCompleted,
     pileupRisk = pileupRisk,
+    isSequential = isSequential,
     negotiatedDelayLimit = negotiatedDelayLimitMinutes?.let(Duration::ofMinutes),
 )
 
@@ -39,6 +40,7 @@ fun Goal.toEntity(createdAt: Long = 0L): GoalEntity = GoalEntity(
     isOneShot = isOneShot,
     totalLessons = totalLessons,
     pileupRisk = pileupRisk,
+    isSequential = isSequential,
     negotiatedDelayLimitMinutes = negotiatedDelayLimit?.toMinutes(),
     createdAt = createdAt,
 )

@@ -40,6 +40,12 @@ data class TaskEntity(
     @ColumnInfo(name = "required_duration_minutes") val requiredDurationMinutes: Long? = null,
     @ColumnInfo(name = "window_anchor") val windowAnchor: WindowAnchor? = null,
 
+    // --- PROTECTED_RECOVERY columns -------------------------------------------
+    // Reuses window_start/window_end as bedtime/wakeTime and
+    // required_duration_minutes as the wind-down, since the shapes match
+    // exactly. Only the hard-stop flag has no equivalent elsewhere.
+    @ColumnInfo(name = "hard_stop") val hardStop: Boolean? = null,
+
     // --- HABIT columns --------------------------------------------------------
     @ColumnInfo(name = "time_of_day") val timeOfDay: LocalTime? = null,
     @ColumnInfo(name = "duration_minutes") val durationMinutes: Long? = null,

@@ -22,6 +22,12 @@ data class GoalEntity(
     @ColumnInfo(name = "is_one_shot") val isOneShot: Boolean = false,
     @ColumnInfo(name = "total_lessons") val totalLessons: Int = 0,
     @ColumnInfo(name = "pileup_risk") val pileupRisk: Boolean = false,
+    /**
+     * True when lessons must be done in order, so nothing downstream can start
+     * until the current one does. Only sequential work can ever negotiate a
+     * delay; parallelisable work has something else to do instead.
+     */
+    @ColumnInfo(name = "is_sequential") val isSequential: Boolean = false,
     @ColumnInfo(name = "negotiated_delay_limit_minutes") val negotiatedDelayLimitMinutes: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = 0L,
 )

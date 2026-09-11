@@ -28,12 +28,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mend.app.ui.components.ReshuffleProposalCard
 import com.mend.app.ui.mendViewModel
 import com.mend.engine.allocation.DaySchedule
+import com.mend.engine.interrupt.InterruptPlan
 import com.mend.engine.allocation.TaskPlacement
 import com.mend.engine.allocation.TimelineEntry
 import com.mend.engine.allocation.UnscheduledTask
 import com.mend.engine.model.StaticBlock
+import com.mend.engine.recovery.SleepStopAction
+import com.mend.engine.recovery.SleepStopDecision
 import com.mend.engine.model.TaskType
 import com.mend.engine.time.TimeInterval
 import java.time.LocalDateTime
@@ -51,13 +55,35 @@ private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm"
 @Composable
 fun TodayScreen() {
     val viewModel = mendViewModel { app ->
-        TodayViewModel(app.staticLayerRepository, app.goalRepository)
+        TodayViewModel(
+            staticLayer = app.staticLayerRepository,
+            goals = app.goalRepository,
+            recovery = app.recoveryRepository,
+            reshuffle = app.reshuffleRepository,
+        )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val schedule = state.schedule
 
     Column(modifier = Modifier.fillMaxSize()) {
         TodayHeader(state = state)
+
+        state.interrupt?.let { InterruptBanner(it) }
+
+        state.sleepStop?.let { SleepBanner(it) }
+
+        state.proposal?.let { proposal ->
+            ReshuffleProposalCard(
+                summary = proposal.summary,
+                changes = proposal.changes,
+                effectiveFrom = proposal.effectiveFrom.format(
+                    DateTimeFormatter.ofPattern("EEEE d MMMM"),
+                ),
+                onRespond = { viewModel.respond(proposal.id, it) },
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
+
         HorizontalDivider()
 
         if (schedule == null || !state.hasAnyInput) {
@@ -65,6 +91,75 @@ fun TodayScreen() {
         } else {
             DayTimeline(schedule = schedule)
         }
+    }
+}
+
+/**
+ * A genuine emergency, and what it costs.
+ *
+ * Sits above everything else because that is what "mandatory next action"
+ * means. The cost is stated in the same breath as the demand: an interrupt
+ * that does not say what it is taking from you is just an alarm.
+ */
+@Composable
+private fun InterruptBanner(plan: InterruptPlan) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.errorContainer)
+            .padding(12.dp),
+    ) {
+        Text(
+            text = "Do this next",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(text = plan.message, style = MaterialTheme.typography.bodySmall)
+        Text(
+            text = "Why: ${plan.qualification.reason}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
+/**
+ * The bedtime boundary, when it is close enough to matter.
+ *
+ * Silent until it is relevant. A protected block that talks all day is a
+ * protected block that gets ignored by evening, which is exactly when it needs
+ * to be heard.
+ */
+@Composable
+private fun SleepBanner(decision: SleepStopDecision) {
+    if (decision.action == SleepStopAction.NONE) return
+
+    val container = when (decision.action) {
+        SleepStopAction.STOP -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.tertiaryContainer
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(container)
+            .padding(12.dp),
+    ) {
+        Text(
+            text = when (decision.action) {
+                SleepStopAction.STOP -> "Hard stop"
+                SleepStopAction.NUDGE -> "Past your wind-down"
+                else -> "Wind-down"
+            },
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(text = decision.message, style = MaterialTheme.typography.bodySmall)
     }
 }
 

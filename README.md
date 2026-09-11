@@ -12,10 +12,10 @@ rewrites your day.
 
 ## Current phase
 
-**Phase 3 — Deterministic priority and scheduling engine.** The engine now
-builds a real day: fixed blocks and habits carve out the grid, goal work is
-ranked by a weighted priority score and packed greedily into whatever is left,
-and every placement and refusal is recorded with its reasoning.
+**Phase 4 — Reshuffling, interrupts and protected sleep.** The schedule can now
+change, and every change is a conversation: the engine proposes, the user
+accepts, declines or counter-proposes. Sleep is a protected boundary the day
+gets cut down for, and a genuinely narrow class of emergency can claim today.
 
 Done so far:
 
@@ -26,9 +26,10 @@ Done so far:
   progress rollup and a pace view.
 - **Phase 3** — priority scoring, greedy slot allocation, and a Today screen
   showing the full computed day.
+- **Phase 4** — negotiated reshuffling, emergency interrupts, protected sleep
+  with a configurable hard stop, and the delay-negotiation tier.
 
-Not yet built: reshuffling and negotiation, emergency interrupts, protected
-sleep, adherence-driven nudges, adaptive weights, any AI layer, alarms,
+Not yet built: adherence-driven nudges, adaptive weights, any AI layer, alarms,
 notifications and widgets.
 
 The full phase plan lives in [PROJECT_PLAN.md](PROJECT_PLAN.md).

@@ -22,6 +22,14 @@ data class Goal(
     val lessonsCompleted: Int = 0,
     /** Set when the goal is fragile: sequential work already slipping. Phase 4. */
     val pileupRisk: Boolean = false,
+    /**
+     * True when lessons must be done in order.
+     *
+     * Half of the delay-negotiation test: postponing sequential work genuinely
+     * blocks everything behind it, whereas parallelisable work just gets
+     * reordered and so never needs to negotiate.
+     */
+    val isSequential: Boolean = false,
     /** Last-resort fallback, granted only to fragile work. Phase 4. */
     val negotiatedDelayLimit: Duration? = null,
 ) {
@@ -44,7 +52,7 @@ data class Goal(
      * once it is genuinely fragile. This is a last resort, not a default.
      */
     val delayNegotiationEligible: Boolean
-        get() = pileupRisk
+        get() = pileupRisk && isSequential
 
     companion object {
         val IMPORTANCE_RANGE = 1..5
