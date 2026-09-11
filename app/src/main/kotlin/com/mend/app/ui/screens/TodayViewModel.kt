@@ -11,11 +11,13 @@ import com.mend.app.repository.GoalWithLessons
 import com.mend.app.repository.MissSweeper
 import com.mend.app.repository.RecoveryRepository
 import com.mend.app.repository.ReshuffleRepository
+import com.mend.app.repository.ProposalInterpreter
 import com.mend.app.repository.ScheduleBuilder
 import com.mend.app.repository.StaticLayerRepository
 import com.mend.app.repository.SweepState
 import com.mend.app.repository.WeightsRepository
 import com.mend.app.repository.detectInterrupt
+import com.mend.app.ui.components.ProposeDifferentState
 import com.mend.engine.adherence.detectElapsedMisses
 import com.mend.engine.allocation.DaySchedule
 import com.mend.engine.guilt.GuiltTrip
@@ -63,6 +65,7 @@ class TodayViewModel(
     private val reshuffle: ReshuffleRepository,
     private val adherence: AdherenceRepository,
     private val weights: WeightsRepository,
+    private val interpreter: ProposalInterpreter,
     private val sweepState: SweepState? = null,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
@@ -75,6 +78,9 @@ class TodayViewModel(
 
     /** The most recent weight change, held until the user has seen it. */
     private val lastAdjustment = MutableStateFlow<WeightAdjustment?>(null)
+
+    /** The open "propose different" dialog, if any. */
+    private val proposeDifferent = MutableStateFlow<ProposeDifferentState?>(null)
 
     /** The stored inputs the day is built from. */
     private data class Inputs(
@@ -107,10 +113,12 @@ class TodayViewModel(
             },
             pendingFeedbackFor,
             lastAdjustment,
-        ) { base, askingFor, adjustment ->
+            proposeDifferent,
+        ) { base, askingFor, adjustment, propose ->
             base.copy(
                 feedbackPromptFor = askingFor,
                 lastAdjustmentReason = adjustment?.describe(),
+                proposeDifferent = propose,
             )
         }
             .onEach { it.schedule?.let(::dumpDecisionLog) }
@@ -386,6 +394,92 @@ class TodayViewModel(
         dismissedGuiltTrips.value = dismissedGuiltTrips.value + goalId
     }
 
+    // --- propose different ---------------------------------------------------
+
+    fun openProposeDifferent(proposalId: String) {
+        proposeDifferent.value = ProposeDifferentState(proposalId = proposalId)
+    }
+
+    fun updateProposeText(text: String) {
+        proposeDifferent.value = proposeDifferent.value?.copy(text = text, outcome = null)
+    }
+
+    fun dismissProposeDifferent() {
+        proposeDifferent.value = null
+    }
+
+    /**
+     * Reads what the user wrote, then stops.
+     *
+     * Deliberately does not apply anything. The result is shown back so a
+     * misreading becomes a corrected sentence rather than a changed schedule,
+     * and the engine has already refused anything incoherent before this
+     * returns.
+     */
+    fun interpretProposeDifferent() {
+        val current = proposeDifferent.value ?: return
+        proposeDifferent.value = current.copy(isWorking = true, outcome = null)
+
+        viewModelScope.launch {
+            val input = inputs.first()
+            val outcome = interpreter.interpret(
+                text = current.text,
+                today = now().toLocalDate(),
+                goalTitles = input.goals.map { it.goal.title },
+                staticBlocks = input.blocks,
+                habits = input.habits,
+                protectedRecovery = listOfNotNull(input.sleepBlock),
+            )
+            proposeDifferent.value = proposeDifferent.value?.copy(
+                isWorking = false,
+                outcome = outcome,
+            )
+        }
+    }
+
+    /**
+     * Accepts an understood constraint.
+     *
+     * Even here the AI applies nothing: this records the user's own words
+     * against the proposal and raises an ordinary schedule-invalidating event,
+     * so the next plan arrives through the same Accept / Decline / Propose
+     * different flow as every other change.
+     */
+    fun acceptInterpretedConstraint() {
+        val current = proposeDifferent.value ?: return
+        val understood = current.outcome as? ProposalInterpreter.Outcome.Understood ?: return
+
+        viewModelScope.launch {
+            reshuffle.respond(
+                current.proposalId,
+                ReshuffleResponse.ProposeDifferent(current.text),
+                now(),
+            )
+            reshuffle.record(
+                ScheduleInvalidatingEvent.ManualEdit(
+                    occurredAt = now(),
+                    summary = understood.summary,
+                ),
+            )
+            proposeDifferent.value = null
+            askForFeedback(current.proposalId)
+        }
+    }
+
+    /** Stores the words verbatim when nothing could read them. */
+    fun saveProposeVerbatim() {
+        val current = proposeDifferent.value ?: return
+        viewModelScope.launch {
+            reshuffle.respond(
+                current.proposalId,
+                ReshuffleResponse.ProposeDifferent(current.text),
+                now(),
+            )
+            proposeDifferent.value = null
+            askForFeedback(current.proposalId)
+        }
+    }
+
     /** Answers an outstanding proposal. Decline is a real answer, not an absence. */
     fun respond(proposalId: String, response: ReshuffleResponse) {
         viewModelScope.launch {
@@ -427,6 +521,7 @@ data class TodayUiState(
     val feedbackPromptFor: String? = null,
     /** The most recent weight change, until acknowledged. */
     val lastAdjustmentReason: String? = null,
+    val proposeDifferent: ProposeDifferentState? = null,
     val subTasksById: Map<String, SubTask> = emptyMap(),
     val bareLessonsById: Map<String, Lesson> = emptyMap(),
     val hasAnyInput: Boolean = false,

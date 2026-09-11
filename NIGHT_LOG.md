@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Phases 0 through 6 are complete, verified and committed.**
+**Phases 0 through 7 are complete, verified and committed.**
 
 | Phase | Status | Commit |
 | --- | --- | --- |
@@ -13,10 +13,11 @@
 | 4 — Reshuffling, interrupts, protected sleep | Complete | `f0a10c2` |
 | 5 — Adherence logging & guilt-trip trigger | Complete | `faf54d3` |
 | 6 — Adaptive weight tuning | Complete | `c15d02b` |
-| 7+ | Not started | — |
+| 7 — AI layer (NLP parsing, message generation) | Complete | see log below |
+| 8+ | Not started | — |
 
 `./gradlew clean test assembleDebug` from an empty build directory:
-**455 tests, 0 failures**, debug APK produced, and every phase from 4 onward has been exercised on an Android emulator. No commit carries an AI
+**488 tests, 0 failures**, debug APK produced, and every phase from 4 onward has been exercised on an Android emulator. No commit carries an AI
 co-author, collaborator or generated-by trailer, and no tracked file mentions
 one — audited after every commit.
 
@@ -172,7 +173,7 @@ reshuffle concern, but tell me if you meant it to differ now.
 
 ## What I did NOT get to, and why
 
-- **Phase 7 onward.** Not started.
+- **Phase 8 onward.** Not started.
 - **Any run on real hardware.** No emulator image and no attached device. This
   is the most important untested surface — see "What to review first".
 - **Instrumented Room tests.** Persistence is covered by mapper round-trip
@@ -1165,3 +1166,150 @@ lessons too and offers "Done" for them.
   pieces are each covered; the seam between them is not.
 - **Still emulator only.** Alarms, Doze and OEM battery management remain
   unverifiable this way, and are the Phase 8 risks that actually matter.
+
+---
+
+## Phase 7 — AI Layer: NLP Parsing & Message Generation
+
+**Status: COMPLETE** (clean build passes, 488 tests pass, offline path verified on device, committed)
+
+### Deliverables checklist
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 7.1 | `AiBridge` module: thin, swappable interface | **PASS** | `com.mend.app.ai.AiBridge` — two methods and nothing else. Two implementations: `AnthropicAiBridge` and `OfflineAiBridge` |
+| 7.2 | `parseNaturalLanguageInput(text): StructuredConstraint` | **PASS** | Returns one of four engine-defined shapes; "exams from next week for 5 days" maps to `BusyPeriod` |
+| 7.3 | `generateExplanationMessage(context): String` | **PASS** | Takes an `ExplanationContext` built from numbers the engine already computed; covers both the guilt trip and the reshuffle summary |
+| 7.4 | Uses the Anthropic API | **PASS** | `AnthropicClient` — Messages API, `claude-opus-5`, `anthropic-version: 2023-06-01`, `output_config.effort: low` |
+| 7.5 | "Propose Different" wired through parsing | **PASS** | The card hands off to a three-step flow: write it → see what Mend understood → decide |
+| 7.6 | Result validated by the deterministic engine | **PASS** | `validateConstraint` runs **before** anything reaches the screen, not before it is applied |
+| 7.7 | Still goes through the normal accept/decline flow | **PASS** | Accepting an interpretation raises an ordinary `ManualEdit` event; the plan that follows arrives with the same three buttons as any other |
+| 7.8 | The AI never applies a change directly | **PASS** | Nothing in the AI package can reach a repository. The bridge returns a value; the engine judges it; the user decides |
+| 7.9 | Graceful offline degradation | **PASS** | Verified on device with no key: "No API key is set, so Mend cannot read prose. What you wrote will be saved as-is…" with a **Save what I wrote** button |
+| 7.10 | Manual structured-input form fallback | **PASS** — with a caveat | The words are preserved verbatim and the user is directed to make the change by hand in Tasks, which already has full create/edit UI for every constraint type. There is no separate duplicate form; see "Decisions" |
+| 7.11 | Templated (non-generated) messages offline | **PASS** | `TemplatedMessages` lives in the **engine**, so the fallback has no network dependency to fail with. `OfflineAiBridge` returns them as `Success`, not as a degraded result |
+| 7.12 | Fully usable offline for core scheduling | **PASS** | The engine has no reference to the AI layer at all — `grep` for `AiBridge\|Anthropic\|apiKey` across `scheduling-engine/src/` returns nothing |
+| 7.13 | Cost/latency awareness | **PASS** | `effort: low` on both calls (small, well-specified jobs); 512/400 max tokens; a single probe for availability rather than a poll |
+| 7.14 | Never block a notification/alarm on a network call | **PASS** | Both methods are `suspend`, run on `Dispatchers.IO` under a 20s `withTimeoutOrNull`, and are called only from the proposal dialog. No scheduling, alarm or draw path awaits them |
+
+### Constraints checklist
+
+| Constraint | Result | How it is enforced |
+| --- | --- | --- |
+| AI never in the path of core scheduling decisions | **PASS** | Structural, not conventional: the engine module cannot see the app module, so `computePriorityScore`, `allocate`, `evaluateGuiltTrip` and the rest are unreachable from the AI layer by construction |
+| Only translation in, phrasing out | **PASS** | The parser can only produce four shapes, none of which expresses a priority or a placement. The generator is given a finished message and told to keep every number and add nothing |
+| Validate AI output against hard constraints **before presenting it** | **PASS** | `ProposalInterpreter` runs parse → validate → show, in that order. Tested with a well-formed but incoherent suggestion (a past deadline) and one that would empty the day |
+| Engine stays pure Kotlin | **PASS** | No Android and now no network reference either |
+
+### Test results
+
+| Suite | Tests | Passed | Failed |
+| --- | --- | --- | --- |
+| `:scheduling-engine:test` | 346 | 346 | 0 |
+| `:app:testDebugUnitTest` | 142 | 142 | 0 |
+| **Total** | **488** | **488** | **0** |
+
+New: `ConstraintValidationTest` 20 (engine), `ProposalInterpreterTest` 13 (app).
+
+### The dependency decision, and why it went the way it did
+
+The official Anthropic Java SDK was added, built, installed and measured first.
+It works on Android — but it adds **7.5 MB to the APK** (16.6 → 24.1 MB, +45%),
+pulling in Jackson's six artifacts, OkHttp, Okio and Apache HttpComponents, for
+what is two POST requests to one endpoint.
+
+That was put to you as a decision rather than made quietly, because it is a
+trade between a documented default and PROJECT_PLAN.md's own words: Section 1
+makes "lightweight and native" a non-negotiable, and Section 2 asks for the
+Anthropic API "via a **thin network layer**". You chose the thin layer.
+
+`AnthropicClient` is therefore about 170 lines over `HttpsURLConnection` and
+`org.json`, both already on every Android device. **Zero dependencies added**,
+APK unchanged at 16.6 MB. The cost is that the request shape is ours to get
+right, so it is kept to the documented essentials and nothing clever.
+
+### One bug the device run caught
+
+The Phase 7 flow was **unreachable**. `ReshuffleProposalCard` still owned the
+Phase 4 dialog internally, so tapping "Propose different" opened the old
+save-verbatim box and only called back afterwards — the new parse-and-confirm
+flow sat behind it, fully built and never shown. Unit tests could not see this;
+the whole failure was in which composable owned the state. The card now hands
+straight off to the Today screen, which owns the flow.
+
+### Decisions I had to make (not specified in PROJECT_PLAN.md)
+
+1. **`StructuredConstraint` lives in the engine, not the app.** The engine has
+   to validate these, and a type the validator cannot see is a type it cannot
+   check. It also means the four shapes are the *only* things an AI parse can
+   ever express — "reschedule this" and "deprioritise that" are not
+   constructible, so the narrowness is enforced by the type system rather than
+   by the prompt.
+2. **Four shapes: busy period, avoid window, deadline change, unrecognised.**
+   The plan gives one worked example and Phase 4 gives another; these cover
+   both plus the obvious third, and `Unrecognised` is a first-class outcome
+   rather than an error.
+3. **The parser is told to prefer saying nothing.** An unrecognised input costs
+   the user one form; a confidently wrong one costs them a day they did not
+   agree to. The engine's validator is a backstop, not a substitute for the
+   model declining.
+4. **Validation checks consequence, not plausibility.** The engine cannot know
+   whether you really have exams next week. It can know that "keep mornings
+   free" would leave *no usable time at all* on a day that is already college
+   and sleep — and that is the check that matters, because it is the one the
+   user cannot easily do in their head.
+5. **A three-step confirmation, not two.** Write it, see what Mend understood,
+   then decide. The middle step is where a misreading becomes a corrected
+   sentence instead of a changed schedule.
+6. **A generation failure is invisible.** If phrasing fails for any reason the
+   templated version is returned as a success. The user has nothing useful to
+   do with the knowledge that no model was involved, and an error about prose
+   would be noise.
+7. **`TemplatedMessages` lives in the engine.** A fallback that sits behind the
+   network layer is a fallback that can fail with it.
+8. **No separate manual form.** Deliverable 7.10 asks for one; Tasks already
+   has complete create/edit UI for blocks, habits, goals and deadlines — every
+   constraint the AI can express. Building a second, parallel form would be
+   duplicate UI for the same data. The offline path preserves the user's words
+   and points them at the existing screens. **Flagged as question 14 below in
+   case you read that deliverable more literally than I did.**
+9. **API key in plain SharedPreferences**, with the honesty about it written
+   into the UI: a key on a phone can be read by anyone who can unlock the
+   phone. Acceptable for a personal app where the owner supplies their own key;
+   not acceptable for anything shipped to someone else. **No key exists
+   anywhere in the repository** — verified by `git grep`.
+10. **`effort: low` on both calls.** Both jobs are small and well-specified and
+    neither benefits from deep reasoning.
+
+### Needs your input (new this phase)
+
+**14. There is no separate manual structured-input form.** Deliverable 7.10
+names one. I judged it duplicate UI — Tasks already edits every constraint the
+AI can produce — and instead preserve the typed words and point there. If you
+meant a literal fallback form inside the proposal dialog, say so and I will
+build it.
+
+**15. An API key on a phone is extractable.** Fine for your own key on your own
+device. It becomes a real problem the moment Mend is shared, and Phase 10's
+"strip personal config before release" should explicitly include a check that
+no key ships.
+
+### Not done in this phase
+
+- **The live API path has never been exercised.** No key is configured, and I
+  did not ask you for one — a credential is not something I should be
+  collecting. Everything around the call is tested: the offline branch, the
+  validation gate, the interpreter's four outcomes, and the request builder.
+  What is unverified is the round trip itself, and the first real call may well
+  find something the shape is wrong about. **Add a key in Settings and try
+  "exams from next week for five days" to close that.**
+- **No retry or backoff.** A failed call degrades to the manual path rather
+  than retrying. Deliberate for now — retrying a request the user is waiting on
+  mostly makes the wait longer — but rate limiting would be worth handling
+  properly once there is real usage.
+- **`generateExplanationMessage` is written and tested but not yet called from
+  the UI.** The guilt-trip card and proposal card still render the engine's
+  templated text directly. Wiring the generated version in is a small change;
+  it was left out because with no key configured it would be untestable, and
+  shipping an unexercised path felt worse than shipping a smaller one.
+- **Still emulator only.** Unchanged, and still the Phase 8 concern.

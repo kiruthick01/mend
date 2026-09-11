@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mend.app.ui.components.FeedbackPrompt
 import com.mend.app.ui.components.GuiltTripCard
+import com.mend.app.ui.components.ProposeDifferentDialog
 import com.mend.app.ui.components.WeightChangeNotice
 import com.mend.app.ui.components.ReshuffleProposalCard
 import com.mend.app.ui.mendViewModel
@@ -40,6 +41,7 @@ import com.mend.engine.allocation.TaskPlacement
 import com.mend.engine.allocation.TimelineEntry
 import com.mend.engine.allocation.UnscheduledTask
 import com.mend.engine.model.Lesson
+import com.mend.engine.reshuffle.ReshuffleResponse
 import com.mend.engine.model.StaticBlock
 import com.mend.engine.model.SubTask
 import com.mend.engine.recovery.SleepStopAction
@@ -68,6 +70,7 @@ fun TodayScreen() {
             reshuffle = app.reshuffleRepository,
             adherence = app.adherenceRepository,
             weights = app.weightsRepository,
+            interpreter = app.proposalInterpreter,
             sweepState = app.sweepState,
         )
     }
@@ -114,12 +117,32 @@ fun TodayScreen() {
                 effectiveFrom = proposal.effectiveFrom.format(
                     DateTimeFormatter.ofPattern("EEEE d MMMM"),
                 ),
-                onRespond = { viewModel.respond(proposal.id, it) },
+                onRespond = { response ->
+                    // "Propose different" opens its own flow rather than being
+                    // recorded immediately: the words have to be read and shown
+                    // back before anything is answered.
+                    if (response is ReshuffleResponse.ProposeDifferent) {
+                        viewModel.openProposeDifferent(proposal.id)
+                    } else {
+                        viewModel.respond(proposal.id, response)
+                    }
+                },
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
 
         HorizontalDivider()
+
+        state.proposeDifferent?.let { propose ->
+            ProposeDifferentDialog(
+                state = propose,
+                onTextChange = viewModel::updateProposeText,
+                onInterpret = viewModel::interpretProposeDifferent,
+                onAccept = viewModel::acceptInterpretedConstraint,
+                onSaveVerbatim = viewModel::saveProposeVerbatim,
+                onDismiss = viewModel::dismissProposeDifferent,
+            )
+        }
 
         if (schedule == null || !state.hasAnyInput) {
             EmptyDay()

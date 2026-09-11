@@ -12,10 +12,11 @@ rewrites your day.
 
 ## Current phase
 
-**Phase 6 — Adaptive weight tuning.** The priority weights now move with
-sustained feedback, by the least clever rule that could work: three consecutive
-identical complaints move one named weight by one fixed step, and every change
-is recorded with the reason it was made.
+**Phase 7 — The AI layer.** An optional, deliberately narrow Anthropic
+integration: language in, phrasing out. It can produce four shapes of
+constraint and nothing else, the deterministic engine validates every one
+before it reaches the screen, and the app is fully usable with no key and no
+network.
 
 Done so far:
 
@@ -32,8 +33,10 @@ Done so far:
   statistics, and the deadline-projection warning.
 - **Phase 6** — the feedback prompt, bounded rule-based weight adjustment, and
   a Settings screen showing the weights and every change made to them.
+- **Phase 7** — natural-language parsing into engine-validated constraints,
+  generated explanation copy, and full offline degradation.
 
-Not yet built: any AI layer, alarms, notifications and widgets.
+Not yet built: alarms, notifications and widgets.
 
 The full phase plan lives in [PROJECT_PLAN.md](PROJECT_PLAN.md).
 
@@ -91,6 +94,23 @@ API 26 is a deliberate floor rather than a default:
   model from the start is better than retrofitting it later.
 - API 26 still covers the overwhelming majority of active devices, so the cost
   of this floor is negligible.
+
+## The AI layer is optional
+
+Mend schedules with ordinary arithmetic. The AI does two jobs and no others:
+it turns a sentence into one of four constraint shapes, and it rewrites
+already-decided messages so they read better. It never ranks, places, or
+refuses anything.
+
+The `scheduling-engine` module has no reference to it whatsoever, so that
+separation is a property of the build rather than a promise. With no API key
+and no network, every core function works: the schedule is built, warnings
+fire, proposals arrive, and messages come from templates that live in the
+engine itself.
+
+To switch it on, add your own Anthropic API key in Settings. It is stored on
+the device only. **No key is, or should ever be, committed to this repository** —
+a key inside an APK can be extracted by anyone who has the APK.
 
 ## Building
 

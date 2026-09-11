@@ -17,9 +17,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mend.app.MendApplication
 import com.mend.app.ui.components.SleepEditorDialog
 import com.mend.app.ui.mendViewModel
 import kotlin.math.roundToInt
@@ -38,6 +40,13 @@ fun SettingsScreen() {
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showEditor by remember { mutableStateOf(false) }
+
+    val app = LocalContext.current.applicationContext as MendApplication
+    // Read directly rather than through a view model: these are two device-local
+    // preferences with no derived state, and a flow for them would be ceremony.
+    var hasKey by remember { mutableStateOf(app.aiSettings.hasApiKey) }
+    var maskedKey by remember { mutableStateOf(app.aiSettings.maskedKey()) }
+    var aiEnabled by remember { mutableStateOf(app.aiSettings.enabled) }
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
@@ -103,6 +112,22 @@ fun SettingsScreen() {
             HorizontalDivider()
         }
 
+        AiSection(
+            hasKey = hasKey,
+            maskedKey = maskedKey,
+            enabled = aiEnabled,
+            onSetKey = { key ->
+                app.aiSettings.apiKey = key
+                hasKey = app.aiSettings.hasApiKey
+                maskedKey = app.aiSettings.maskedKey()
+            },
+            onSetEnabled = {
+                app.aiSettings.enabled = it
+                aiEnabled = it
+            },
+        )
+        HorizontalDivider()
+
         WeightsSection(
             weights = state.weights,
             history = state.adjustments,
@@ -111,7 +136,7 @@ fun SettingsScreen() {
         HorizontalDivider()
 
         Text(
-            text = "Notifications, alarms and widgets arrive in a later phase.",
+            text = "Alarms, notifications and widgets arrive in a later phase.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(20.dp),

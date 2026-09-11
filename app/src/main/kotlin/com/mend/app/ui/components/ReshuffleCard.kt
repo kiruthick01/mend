@@ -5,19 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,8 +34,6 @@ fun ReshuffleProposalCard(
     onRespond: (ReshuffleResponse) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showProposeDifferent by remember { mutableStateOf(false) }
-
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -89,64 +81,14 @@ fun ReshuffleProposalCard(
                 TextButton(onClick = { onRespond(ReshuffleResponse.Decline) }) {
                     Text("Decline")
                 }
-                OutlinedButton(onClick = { showProposeDifferent = true }) {
+                OutlinedButton(
+                    // Hands straight off to the Today screen, which owns the
+                    // read-it-back flow. The text is collected there.
+                    onClick = { onRespond(ReshuffleResponse.ProposeDifferent("")) },
+                ) {
                     Text("Propose different")
                 }
             }
         }
     }
-
-    if (showProposeDifferent) {
-        ProposeDifferentDialog(
-            onDismiss = { showProposeDifferent = false },
-            onSubmit = {
-                onRespond(ReshuffleResponse.ProposeDifferent(it))
-                showProposeDifferent = false
-            },
-        )
-    }
-}
-
-/**
- * Free text, kept verbatim.
- *
- * Phase 7 routes this through NLP parsing. Until then it is stored exactly as
- * written rather than being forced into a structured form — losing what the
- * user actually said would be worse than not acting on it yet.
- */
-@Composable
-private fun ProposeDifferentDialog(
-    onDismiss: () -> Unit,
-    onSubmit: (String) -> Unit,
-) {
-    var text by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("What would you rather?") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    placeholder = { Text("Keep mornings free — I think better after lunch") },
-                    minLines = 3,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = "This is saved as written. Mend cannot act on it yet, " +
-                        "so nothing changes until you say so.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = text.isNotBlank(),
-                onClick = { onSubmit(text.trim()) },
-            ) { Text("Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }
