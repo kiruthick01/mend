@@ -11,7 +11,7 @@
 | 2 — Goals, lessons, sub-tasks, progress | Complete | `ffc3bdd` |
 | 3 — Priority scoring & slot allocation | Complete | `8620a66` |
 | 4 — Reshuffling, interrupts, protected sleep | Complete | `f0a10c2` |
-| 5 — Adherence logging & guilt-trip trigger | Complete | see log below |
+| 5 — Adherence logging & guilt-trip trigger | Complete | `faf54d3` |
 | 6+ | Not started | — |
 
 `./gradlew clean test assembleDebug` from an empty build directory:
