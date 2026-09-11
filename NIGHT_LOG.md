@@ -13,7 +13,7 @@
 | 4 — Reshuffling, interrupts, protected sleep | Complete | `f0a10c2` |
 | 5 — Adherence logging & guilt-trip trigger | Complete | `faf54d3` |
 | 6 — Adaptive weight tuning | Complete | `c15d02b` |
-| 7 — AI layer (NLP parsing, message generation) | Complete | see log below |
+| 7 — AI layer (NLP parsing, message generation) | Complete | `9f968e9` |
 | 8+ | Not started | — |
 
 `./gradlew clean test assembleDebug` from an empty build directory:
