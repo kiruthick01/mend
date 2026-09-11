@@ -9,6 +9,7 @@ import com.mend.engine.model.ProtectedRecovery
 import com.mend.engine.model.TaskType
 import com.mend.engine.recovery.SleepLogEntry
 import com.mend.engine.time.TimeInterval
+import com.mend.engine.tuning.Tuning
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
@@ -108,7 +109,7 @@ class RecoveryRepository(
          * Past this much later than target, bedtime was not merely missed by a
          * margin - it was not observed at all.
          */
-        const val MISSED_BEDTIME_THRESHOLD_MINUTES: Long = 120
+        const val MISSED_BEDTIME_THRESHOLD_MINUTES: Long = Tuning.MISSED_BEDTIME_THRESHOLD_MINUTES
     }
 
     private fun newNight(date: LocalDate, block: ProtectedRecovery) = SleepLogEntry(

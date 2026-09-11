@@ -64,6 +64,7 @@ fun TodayScreen() {
             recovery = app.recoveryRepository,
             reshuffle = app.reshuffleRepository,
             adherence = app.adherenceRepository,
+            sweepState = app.sweepState,
         )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -466,6 +467,7 @@ private fun fixedSubtitle(entry: TimelineEntry.Fixed): String {
             "$length within ${block.windowStart.format(TIME_FORMAT)}" +
                 "-${block.windowEnd.format(TIME_FORMAT)} window"
         block.type == TaskType.HABIT -> "$length  ·  habit"
+        block.type == TaskType.PROTECTED_RECOVERY -> "$length  ·  protected"
         else -> "$length  ·  fixed block"
     }
 }

@@ -7,6 +7,7 @@ import com.mend.app.repository.GoalRepository
 import com.mend.app.repository.RecoveryRepository
 import com.mend.app.repository.ReshuffleRepository
 import com.mend.app.repository.StaticLayerRepository
+import com.mend.app.repository.SweepState
 
 class MendApplication : Application() {
 
@@ -15,6 +16,8 @@ class MendApplication : Application() {
     val staticLayerRepository: StaticLayerRepository by lazy {
         StaticLayerRepository(database.taskDao(), reshuffleRepository)
     }
+
+    val sweepState: SweepState by lazy { SweepState(this) }
 
     val adherenceRepository: AdherenceRepository by lazy {
         AdherenceRepository(database.adherenceLogDao(), reshuffleRepository)

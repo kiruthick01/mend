@@ -1,6 +1,7 @@
 package com.mend.engine.model
 
 import com.mend.engine.time.TimeInterval
+import com.mend.engine.tuning.Tuning
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
@@ -102,6 +103,6 @@ data class ProtectedRecovery(
 
     companion object {
         /** Half an hour of wind-down before the block opens. */
-        val DEFAULT_WIND_DOWN: Duration = Duration.ofMinutes(30)
+        val DEFAULT_WIND_DOWN: Duration = Tuning.DEFAULT_WIND_DOWN
     }
 }

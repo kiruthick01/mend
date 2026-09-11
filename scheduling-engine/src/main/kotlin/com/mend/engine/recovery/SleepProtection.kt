@@ -3,6 +3,7 @@ package com.mend.engine.recovery
 import com.mend.engine.allocation.DaySchedule
 import com.mend.engine.allocation.TaskPlacement
 import com.mend.engine.model.ProtectedRecovery
+import com.mend.engine.tuning.Tuning
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -52,7 +53,7 @@ data class SleepStopDecision(
 }
 
 /** How long before the boundary a warning starts. */
-val SLEEP_WARNING_LEAD: Duration = Duration.ofMinutes(15)
+val SLEEP_WARNING_LEAD: Duration = Tuning.SLEEP_WARNING_LEAD
 
 /**
  * Decides what to do about work still running at [now].
@@ -209,7 +210,7 @@ data class SleepTrend(
 }
 
 /** A night counts as on target if bedtime was met within this much slack. */
-const val BEDTIME_ON_TARGET_SLACK_MINUTES: Long = 15
+const val BEDTIME_ON_TARGET_SLACK_MINUTES: Long = Tuning.BEDTIME_ON_TARGET_SLACK_MINUTES
 
 /**
  * Summarises [entries] into a trend.

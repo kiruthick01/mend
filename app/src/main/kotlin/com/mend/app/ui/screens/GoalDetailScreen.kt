@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -68,8 +69,18 @@ fun GoalDetailScreen(goalId: String, onBack: () -> Unit) {
     var subTaskTarget by remember { mutableStateOf<Pair<Lesson, SubTask?>?>(null) }
 
     Scaffold(
+        // The top-level Scaffold in MendApp has already inset this screen for
+        // the status and navigation bars. Modifier.padding does not consume
+        // insets, so without this the inner Scaffold applies them a second time
+        // and the content sits a whole status bar too low.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                // TopAppBar insets itself for the status bar by default, which
+                // would be a third application of the same inset on top of the
+                // outer Scaffold. Everything above this point has already
+                // accounted for it.
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = { Text(item?.goal?.title ?: "Goal") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

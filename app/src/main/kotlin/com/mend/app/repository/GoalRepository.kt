@@ -12,7 +12,10 @@ import com.mend.engine.model.SubTask
 import com.mend.engine.reshuffle.ScheduleInvalidatingEvent
 import com.mend.engine.time.TimeInterval
 import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -21,6 +24,14 @@ import kotlinx.coroutines.flow.map
 data class GoalWithLessons(
     val goal: Goal,
     val lessons: List<Lesson>,
+    /**
+     * The day this goal was created, where known.
+     *
+     * Needed by the catch-up sweep: recomputing a past day must not include
+     * goals that did not exist then, or adding a goal today would back-date a
+     * fortnight of failures nobody had committed to.
+     */
+    val createdOn: LocalDate? = null,
 )
 
 /**
@@ -53,8 +64,9 @@ class GoalRepository(
             lessonDao.observeAll(),
             subTaskDao.observeAll(),
         ) { goals, lessons, subTasks ->
+            val createdOn = goals.associate { it.id to it.createdAt.toLocalDateOrNull() }
             assembleGoals(goals, lessons, subTasks).map { (goal, goalLessons) ->
-                GoalWithLessons(goal, goalLessons)
+                GoalWithLessons(goal, goalLessons, createdOn[goal.id])
             }
         }
 
@@ -175,3 +187,13 @@ class GoalRepository(
         }
     }
 }
+
+/**
+ * Epoch millis as a local date, or null when it was never recorded.
+ *
+ * Rows written before creation timestamps existed carry zero, and treating
+ * that as 1970 would make every such goal look older than any sweep window,
+ * which is the safe direction but worth naming rather than leaving implicit.
+ */
+private fun Long.toLocalDateOrNull(): LocalDate? =
+    if (this <= 0L) null else Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()

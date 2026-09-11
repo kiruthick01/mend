@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -77,6 +78,11 @@ fun TasksScreen(onOpenGoal: (String) -> Unit = {}) {
     var showGoalEditor by remember { mutableStateOf(false) }
 
     Scaffold(
+        // The top-level Scaffold in MendApp has already inset this screen for
+        // the status and navigation bars. Modifier.padding does not consume
+        // insets, so without this the inner Scaffold applies them a second time
+        // and the content sits a whole status bar too low.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = {

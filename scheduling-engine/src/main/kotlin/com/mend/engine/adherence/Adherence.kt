@@ -2,6 +2,7 @@ package com.mend.engine.adherence
 
 import com.mend.engine.model.AdherenceLogEntry
 import com.mend.engine.model.AdherenceOutcome
+import com.mend.engine.tuning.Tuning
 import java.time.Duration
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -19,10 +20,10 @@ import kotlin.math.abs
  */
 
 /** Days of history a rolling window covers unless told otherwise. */
-const val DEFAULT_ROLLING_WINDOW_DAYS: Long = 14
+const val DEFAULT_ROLLING_WINDOW_DAYS: Long = Tuning.ROLLING_WINDOW_DAYS
 
 /** Below this many observations, a rate is reported but not treated as signal. */
-const val MINIMUM_OBSERVATIONS_FOR_SIGNAL: Int = 3
+const val MINIMUM_OBSERVATIONS_FOR_SIGNAL: Int = Tuning.MINIMUM_OBSERVATIONS_FOR_SIGNAL
 
 /** How delays are moving, compared across the two halves of the window. */
 enum class DelayTrend {
@@ -40,7 +41,7 @@ enum class DelayTrend {
 }
 
 /** A delay shift smaller than this is noise, not a trend. */
-const val DELAY_TREND_SENSITIVITY_MINUTES: Double = 5.0
+const val DELAY_TREND_SENSITIVITY_MINUTES: Double = Tuning.DELAY_TREND_SENSITIVITY_MINUTES
 
 /** What the history says about one task, or one kind of task. */
 data class AdherenceStats(

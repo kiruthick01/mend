@@ -2,6 +2,7 @@ package com.mend.engine.fragility
 
 import com.mend.engine.model.AdherenceLogEntry
 import com.mend.engine.model.AdherenceOutcome
+import com.mend.engine.tuning.Tuning
 import java.time.Duration
 
 /**
@@ -24,10 +25,10 @@ import java.time.Duration
  */
 
 /** Skips before work counts as piling up. Two, per "skipped once/twice". */
-const val FRAGILE_SKIP_THRESHOLD: Int = 2
+const val FRAGILE_SKIP_THRESHOLD: Int = Tuning.FRAGILE_SKIP_THRESHOLD
 
 /** The most delay that can be negotiated at once. */
-val MAX_NEGOTIATED_DELAY: Duration = Duration.ofDays(2)
+val MAX_NEGOTIATED_DELAY: Duration = Tuning.MAX_NEGOTIATED_DELAY
 
 /** What the adherence history says about one piece of work. */
 data class TaskFragility(

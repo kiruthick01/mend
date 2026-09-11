@@ -8,10 +8,12 @@ import com.mend.app.data.mapper.changeLines
 import com.mend.app.repository.AdherenceRepository
 import com.mend.app.repository.GoalRepository
 import com.mend.app.repository.GoalWithLessons
+import com.mend.app.repository.MissSweeper
 import com.mend.app.repository.RecoveryRepository
 import com.mend.app.repository.ReshuffleRepository
 import com.mend.app.repository.ScheduleBuilder
 import com.mend.app.repository.StaticLayerRepository
+import com.mend.app.repository.SweepState
 import com.mend.app.repository.detectInterrupt
 import com.mend.engine.adherence.detectElapsedMisses
 import com.mend.engine.allocation.DaySchedule
@@ -34,6 +36,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -54,6 +57,7 @@ class TodayViewModel(
     private val recovery: RecoveryRepository,
     private val reshuffle: ReshuffleRepository,
     private val adherence: AdherenceRepository,
+    private val sweepState: SweepState? = null,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
 
@@ -109,6 +113,7 @@ class TodayViewModel(
             habits = input.habits,
             goals = input.goals,
             protectedRecovery = recoveryBlocks,
+            adherenceLog = log,
         )
 
         return TodayUiState(
@@ -152,6 +157,42 @@ class TodayViewModel(
     init {
         watchForReshuffleTriggers()
         watchForElapsedMisses()
+        sweepMissedDays()
+    }
+
+    /**
+     * Back-fills days the app was never opened.
+     *
+     * Runs once, against the first snapshot of the inputs. A past day has no
+     * stored schedule, but a schedule is a pure function of its inputs, so it
+     * can be recomputed — and work since completed drops out on its own,
+     * because it is no longer pending.
+     */
+    private fun sweepMissedDays() {
+        val state = sweepState ?: return
+        viewModelScope.launch {
+            val input = inputs.first()
+            val instant = now()
+
+            MissSweeper.sweep(
+                lastSwept = state.lastSweptDate,
+                now = instant,
+                staticBlocks = input.blocks,
+                habits = input.habits,
+                protectedRecovery = listOfNotNull(input.sleepBlock),
+                goals = input.goals,
+                alreadyLoggedOn = { adherence.loggedOn(it) },
+            ).forEach { recovered ->
+                adherence.recordMiss(
+                    taskId = recovered.taskId,
+                    taskTitle = recovered.taskTitle,
+                    assignedSlot = recovered.slot,
+                    now = instant,
+                )
+            }
+
+            state.lastSweptDate = instant.toLocalDate().minusDays(1)
+        }
     }
 
     /**

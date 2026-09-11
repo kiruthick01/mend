@@ -10,6 +10,7 @@ import com.mend.engine.priority.RankedTask
 import com.mend.engine.priority.rankByPriority
 import com.mend.engine.time.Intervals
 import com.mend.engine.time.TimeInterval
+import com.mend.engine.tuning.Tuning
 import java.time.Duration
 import java.time.LocalDate
 
@@ -34,10 +35,10 @@ import java.time.LocalDate
  */
 
 /** A shrinkable task will not be cut below this fraction of its request. */
-const val MINIMUM_SHRINK_FRACTION: Double = 0.5
+const val MINIMUM_SHRINK_FRACTION: Double = Tuning.MINIMUM_SHRINK_FRACTION
 
 /** Fragments shorter than this are not worth placing or leaving behind. */
-val MINIMUM_USEFUL_SLICE: Duration = Duration.ofMinutes(10)
+val MINIMUM_USEFUL_SLICE: Duration = Tuning.MINIMUM_USEFUL_SLICE
 
 /** The full computed shape of a day: fixed entries plus placed goal work. */
 data class DaySchedule(

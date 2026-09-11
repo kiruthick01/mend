@@ -3,6 +3,8 @@ package com.mend.engine.adherence
 import com.mend.engine.allocation.DaySchedule
 import com.mend.engine.allocation.TaskPlacement
 import com.mend.engine.time.TimeInterval
+import com.mend.engine.tuning.Tuning
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
@@ -73,4 +75,39 @@ fun delayAgainstSlot(slot: TimeInterval?, completedAt: LocalDateTime): Long {
     if (slot == null) return 0
     if (!completedAt.isAfter(slot.end)) return 0
     return java.time.temporal.ChronoUnit.MINUTES.between(slot.end, completedAt)
+}
+
+/** How far back a catch-up sweep will ever look. */
+const val MAX_SWEEP_LOOKBACK_DAYS: Long = Tuning.MAX_SWEEP_LOOKBACK_DAYS
+
+/**
+ * The days a catch-up sweep should examine.
+ *
+ * Today is deliberately excluded: it is swept live while the app is open, and
+ * its slots are still elapsing. Only days that are genuinely over can be
+ * judged.
+ *
+ * The lookback is capped because the adherence window is finite anyway —
+ * back-filling a month of misses after a long absence would flood the stream
+ * with entries that say nothing except "you were not using the app", and that
+ * is not a behavioural signal worth recording.
+ */
+fun datesToSweep(
+    lastSwept: LocalDate?,
+    today: LocalDate,
+    maxLookbackDays: Long = MAX_SWEEP_LOOKBACK_DAYS,
+): List<LocalDate> {
+    val earliest = today.minusDays(maxLookbackDays)
+    val from = when {
+        lastSwept == null -> earliest
+        lastSwept.isBefore(earliest) -> earliest
+        // Already swept up to and including lastSwept, so start the day after.
+        else -> lastSwept.plusDays(1)
+    }
+
+    if (!from.isBefore(today)) return emptyList()
+
+    return generateSequence(from) { it.plusDays(1) }
+        .takeWhile { it.isBefore(today) }
+        .toList()
 }

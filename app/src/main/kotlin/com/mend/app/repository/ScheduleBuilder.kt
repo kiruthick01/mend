@@ -1,8 +1,10 @@
 package com.mend.app.repository
 
+import com.mend.engine.adherence.resolveAdherenceTrend
 import com.mend.engine.allocation.DaySchedule
 import com.mend.engine.allocation.allocate
 import com.mend.engine.freetime.computeFreeTimeMap
+import com.mend.engine.model.AdherenceLogEntry
 import com.mend.engine.model.Goal
 import com.mend.engine.model.GoalTask
 import com.mend.engine.model.Habit
@@ -12,6 +14,7 @@ import com.mend.engine.model.ProtectedRecovery
 import com.mend.engine.model.StaticBlock
 import com.mend.engine.model.Weights
 import com.mend.engine.progress.isComplete
+import com.mend.engine.tuning.Tuning
 import java.time.Duration
 import java.time.LocalDate
 
@@ -26,7 +29,7 @@ import java.time.LocalDate
 object ScheduleBuilder {
 
     /** Default estimate for a bare lesson, which carries none of its own. */
-    val BARE_LESSON_ESTIMATE: Duration = Duration.ofMinutes(60)
+    val BARE_LESSON_ESTIMATE: Duration = Tuning.BARE_LESSON_ESTIMATE
 
     fun buildDaySchedule(
         date: LocalDate,
@@ -35,12 +38,30 @@ object ScheduleBuilder {
         goals: List<GoalWithLessons>,
         protectedRecovery: List<ProtectedRecovery> = emptyList(),
         weights: Weights = Weights.DEFAULT,
-    ): DaySchedule = allocate(
-        freeTimeMap = computeFreeTimeMap(date, staticBlocks, habits, protectedRecovery),
-        tasks = goals.flatMap { pendingTasks(it.goal, it.lessons) },
-        weights = weights,
-        today = date,
-    )
+        adherenceLog: List<AdherenceLogEntry> = emptyList(),
+    ): DaySchedule {
+        // Sub-task types across every goal, so a task with thin history of its
+        // own can be scored on the record of its kind of work.
+        val typeOf = goals
+            .flatMap { it.lessons }
+            .flatMap { lesson -> lesson.subTasks.map { it.id to it.type } }
+            .toMap()
+
+        return allocate(
+            freeTimeMap = computeFreeTimeMap(date, staticBlocks, habits, protectedRecovery),
+            tasks = goals.flatMap { entry ->
+                pendingTasks(entry.goal, entry.lessons) { taskId ->
+                    resolveAdherenceTrend(
+                        log = adherenceLog,
+                        taskId = taskId,
+                        asOf = date,
+                    ) { typeOf[it] }
+                }
+            },
+            weights = weights,
+            today = date,
+        )
+    }
 
     /**
      * Free minutes between [from] and [until] inclusive.
@@ -79,18 +100,27 @@ object ScheduleBuilder {
      * with none contributes itself, since ticking the lesson is how it is
      * completed. Finished work contributes nothing.
      */
-    fun pendingTasks(goal: Goal, lessons: List<Lesson>): List<GoalTask> =
+    fun pendingTasks(
+        goal: Goal,
+        lessons: List<Lesson>,
+        adherenceTrendOf: (String) -> Double = { GoalTask.NEUTRAL_ADHERENCE },
+    ): List<GoalTask> =
         lessons.flatMap { lesson ->
             when {
                 lesson.isComplete() -> emptyList()
 
                 lesson.hasNoSubTasks -> listOf(
-                    GoalTask.fromBareLesson(goal, lesson, BARE_LESSON_ESTIMATE),
+                    GoalTask.fromBareLesson(
+                        goal = goal,
+                        lesson = lesson,
+                        estimatedDuration = BARE_LESSON_ESTIMATE,
+                        adherenceTrend = adherenceTrendOf(lesson.id),
+                    ),
                 )
 
                 else -> lesson.subTasks
                     .filter { it.status != ProgressStatus.DONE }
-                    .map { GoalTask.fromSubTask(goal, it) }
+                    .map { GoalTask.fromSubTask(goal, it, adherenceTrendOf(it.id)) }
             }
         }
 }

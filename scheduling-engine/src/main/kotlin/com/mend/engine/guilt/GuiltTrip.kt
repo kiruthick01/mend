@@ -10,6 +10,7 @@ import com.mend.engine.model.Lesson
 import com.mend.engine.progress.GoalProgress
 import com.mend.engine.progress.computeGoalProgress
 import com.mend.engine.progress.remainingEffort
+import com.mend.engine.tuning.Tuning
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlin.math.ceil
@@ -34,10 +35,10 @@ import kotlin.math.ceil
  */
 
 /** Days of recorded activity before a projection is trustworthy. */
-const val MINIMUM_ACTIVE_DAYS_FOR_PROJECTION: Int = 3
+const val MINIMUM_ACTIVE_DAYS_FOR_PROJECTION: Int = Tuning.MINIMUM_ACTIVE_DAYS_FOR_PROJECTION
 
 /** Completed slots before a projection is trustworthy. */
-const val MINIMUM_COMPLETIONS_FOR_PROJECTION: Int = 3
+const val MINIMUM_COMPLETIONS_FOR_PROJECTION: Int = Tuning.MINIMUM_COMPLETIONS_FOR_PROJECTION
 
 /** Why a projection could not be made. */
 enum class ProjectionBlocker {

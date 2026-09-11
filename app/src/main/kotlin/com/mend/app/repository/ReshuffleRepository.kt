@@ -76,6 +76,14 @@ class ReshuffleRepository(
             proposed = proposedSchedule,
         )
 
+        // A proposal that moves nothing is not worth a question. The events
+        // behind it are still marked handled, so they do not accumulate and
+        // resurface later as a mystery prompt.
+        if (proposal.isNoOp) {
+            eventDao.attachToProposal(pendingRows.map { it.id }, NO_OP_PROPOSAL_ID)
+            return null
+        }
+
         val row = ReshuffleProposalEntity(
             id = proposal.id,
             effectiveFrom = proposal.effectiveFrom,
@@ -106,6 +114,15 @@ class ReshuffleRepository(
         text = response.text(),
         at = now,
     ) > 0
+
+    companion object {
+        /**
+         * Marker used to retire events whose proposal turned out to change
+         * nothing. It is not a real proposal row, so nothing will ever be
+         * shown for it; it exists so those events are not reconsidered.
+         */
+        const val NO_OP_PROPOSAL_ID = "no-op"
+    }
 
     /** The earliest date any proposal may apply to. Never today. */
     fun earliestEffectiveDate(now: LocalDateTime) = effectiveDateFor(now.toLocalDate())

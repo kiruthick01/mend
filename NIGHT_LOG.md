@@ -15,7 +15,7 @@
 | 6+ | Not started | — |
 
 `./gradlew clean test assembleDebug` from an empty build directory:
-**375 tests, 0 failures**, debug APK produced. No commit carries an AI
+**408 tests, 0 failures**, debug APK produced, and the app has now been run and exercised on an Android emulator. No commit carries an AI
 co-author, collaborator or generated-by trailer, and no tracked file mentions
 one — audited after every commit.
 
@@ -911,3 +911,144 @@ fixing chronic late-night work is a stated goal of the project?
 - **Still nothing run on a device.** Unchanged since Phase 3, and now the
   largest untested surface by a considerable margin: nine tables, five
   repositories, and a Today screen with four distinct banner states.
+
+---
+
+## Post-Phase-5 — Closing the four flagged gaps
+
+**Status: COMPLETE** (clean build passes, 408 tests pass, committed)
+
+Four gaps were outstanding after Phase 5. All four are now addressed.
+
+### 1. Run it on real hardware — **DONE, and it found three bugs**
+
+The largest gap in the project since Phase 3 is closed. An emulator was
+installed (`system-images;android-35;google_apis;x86_64`, AVD `mend-test`,
+headless with swiftshader), the app installed and driven through its actual UI.
+
+**Verified working on an Android runtime:**
+
+- App launches, no crash, survives restart.
+- Every screen renders: Today, Tasks (three tabs), goal detail, Settings, and
+  all six dialogs.
+- Room persistence is real — a static block survived an app restart and a
+  reinstall.
+- The full timeline renders correctly: sleep at both ends of the day, the
+  evening block opening at 22:00 for a 22:30 bedtime (wind-down applied), a
+  static block, scheduled goal work with Done/Missed actions, and free gaps.
+- Progress rollup updates live ("0 of 0" → "0 of 1 lessons" on adding one).
+- Form validation works: Save stays disabled with a live error until the input
+  is valid.
+- The reshuffle card renders with exactly three actions.
+- **The decision log works on device.** Adding the sleep block moved free time
+  from 1020m to 510m and relocated the task from 00:00 to 06:30, with the
+  reasoning legible in logcat under `MendScheduler`. The Phase 3 promise —
+  "you must be able to answer *why is this here* from logs alone" — holds on
+  real hardware.
+
+**Three bugs found, none of which any unit test could have caught:**
+
+1. **Window insets applied twice.** `TasksScreen` nests a `Scaffold` inside
+   `MendApp`'s. `Modifier.padding()` does not *consume* insets, so the status
+   bar was inset twice and content sat a whole status bar too low. Fixed with
+   `contentWindowInsets = WindowInsets(0,0,0,0)` on the inner Scaffolds.
+2. **The same bug a third level down.** `TopAppBar` insets itself by default, so
+   the goal detail screen applied it three times over. Same fix.
+3. **Protected sleep rendered as "fixed block".** The subtitle fell through to
+   the static-block branch, so the one entry type Phase 4 exists to distinguish
+   was labelled as the thing it is not. Now reads "protected".
+
+And one design bug the device made obvious:
+
+4. **No-op proposals were being raised.** A reshuffle card appeared saying
+   "nothing needs to move" with Accept/Decline buttons. Asking someone to accept
+   a change that is not a change is exactly the noise PROJECT_PLAN.md warns
+   against, and it trains them to dismiss the prompts that matter. Proposals
+   with an empty diff are now suppressed; their events are still retired so they
+   cannot resurface later as a mystery prompt.
+
+### 2. Wire `adherenceTrend` into the priority score — **DONE**
+
+The score has always weighted an adherence term, but every task carried the
+neutral 0.5, so the term was inert. It now carries real recorded history.
+
+The difficulty is that most individual sub-tasks are scheduled once or twice
+ever, so their personal history is far too thin to rank on — one missed session
+would make a brand-new task look chronically neglected. `resolveAdherenceTrend`
+therefore works down three steps, widest evidence first:
+
+1. the task's own record, if it has enough observations;
+2. otherwise the record of **that kind of work** — if reading is honoured 40% of
+   the time across the goal, a new reading sub-task inherits that;
+3. otherwise neutral. Silence, not suspicion.
+
+`resolveAdherenceTrendWithSource` reports which of the three was used, because
+"this ranked higher because you keep skipping it" is only defensible if it can
+name the evidence.
+
+### 3. Back-fill missed work for days the app was not opened — **DONE**
+
+Previously the sweep covered today only, so a weekend away left no trace and
+quietly flattered every statistic built on the stream.
+
+There is no stored schedule for a past day and there does not need to be: a
+schedule is a pure function of its inputs, so a past day is recomputed. The risk
+here is not missing a miss, it is **inventing** one — which would poison the
+append-only stream in the direction hardest to notice and impossible to correct.
+Three guards:
+
+- **Completed work drops out on its own** — it stops being pending, so it is not
+  in the recomputed day at all.
+- **Goals that did not exist yet are excluded**, by creation date. Without this,
+  adding a goal today would back-date a fortnight of failures for work nobody
+  had committed to.
+- **The lookback is capped at 14 days.** Back-filling a month after a long
+  absence would flood the stream with entries saying nothing except "you were
+  not using the app", which is not a behavioural signal.
+
+A past day is judged at **its own end**, not against the current clock —
+otherwise an evening slot on a past day would look as though it had not happened
+yet. Sweep progress is kept in SharedPreferences rather than the schema: it is
+bookkeeping about the app, not something the user owns.
+
+### 4. The invented numbers — **partially: I cannot choose them, so I made them findable**
+
+The values themselves are still yours to set; I have no basis for picking them
+and guessing would defeat the point of having flagged them.
+
+What I could fix is that **nineteen invented constants were scattered across
+eleven files**, which made them effectively invisible — the real problem. They
+now live in one place, `com.mend.engine.tuning.Tuning`, each with what it
+controls and what moving it would do. Every original constant references it, so
+changing a value there changes the behaviour and nothing has to be hunted down.
+
+The rules are deliberately *not* in there. Sleep is protected, habits are never
+ranked, changes take effect tomorrow, the guilt trip fires only for real
+consequences — those are the design, not settings.
+
+The two most worth your attention remain the projection gates
+(`MINIMUM_ACTIVE_DAYS_FOR_PROJECTION` / `MINIMUM_COMPLETIONS_FOR_PROJECTION`,
+both 3) and `MISSED_BEDTIME_THRESHOLD_MINUTES` (120).
+
+### Test results
+
+| Suite | Tests | Passed | Failed |
+| --- | --- | --- | --- |
+| `:scheduling-engine:test` | 296 | 296 | 0 |
+| `:app:testDebugUnitTest` | 112 | 112 | 0 |
+| **Total** | **408** | **408** | **0** |
+
+New: `AdherenceTrendTest` 12, `SweepDatesTest` 9 (engine); `MissSweeperTest` 12
+(app). Verified with `./gradlew clean test assembleDebug`, then installed and
+exercised on the emulator.
+
+### Still not done
+
+- **Emulator only, not a physical device.** Alarms, Doze, and OEM battery
+  management still cannot be verified this way, and those are the Phase 8
+  reliability risks that matter most.
+- **No instrumented Room tests.** Persistence is now demonstrably working on
+  device by observation, but there is still no automated test against real
+  SQLite.
+- **Sweep runs at app open only.** Genuinely periodic catch-up wants the Phase 8
+  `WorkManager` job.

@@ -4,6 +4,7 @@ import com.mend.engine.model.Goal
 import com.mend.engine.model.GoalTask
 import com.mend.engine.model.Schedulable
 import com.mend.engine.model.Weights
+import com.mend.engine.tuning.Tuning
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -18,7 +19,7 @@ import java.time.temporal.ChronoUnit
  */
 
 /** How far ahead a deadline stops adding urgency, in days. */
-const val DEADLINE_HORIZON_DAYS: Long = 30
+const val DEADLINE_HORIZON_DAYS: Long = Tuning.DEADLINE_HORIZON_DAYS
 
 /**
  * The breakdown behind a score, kept so a placement can be explained without

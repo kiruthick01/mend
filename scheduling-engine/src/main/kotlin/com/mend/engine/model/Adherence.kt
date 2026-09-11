@@ -1,5 +1,6 @@
 package com.mend.engine.model
 
+import com.mend.engine.tuning.Tuning
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -43,9 +44,9 @@ data class Weights(
     }
 
     companion object {
-        const val DEFAULT_DEADLINE = 0.5
-        const val DEFAULT_IMPORTANCE = 0.35
-        const val DEFAULT_ADHERENCE_TREND = 0.15
+        const val DEFAULT_DEADLINE = Tuning.WEIGHT_DEADLINE
+        const val DEFAULT_IMPORTANCE = Tuning.WEIGHT_IMPORTANCE
+        const val DEFAULT_ADHERENCE_TREND = Tuning.WEIGHT_ADHERENCE_TREND
 
         val BOUNDS = 0.0..1.0
 
