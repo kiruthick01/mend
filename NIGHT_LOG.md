@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Phases 0 through 5 are complete, verified and committed.**
+**Phases 0 through 6 are complete, verified and committed.**
 
 | Phase | Status | Commit |
 | --- | --- | --- |
@@ -12,10 +12,11 @@
 | 3 — Priority scoring & slot allocation | Complete | `8620a66` |
 | 4 — Reshuffling, interrupts, protected sleep | Complete | `f0a10c2` |
 | 5 — Adherence logging & guilt-trip trigger | Complete | `faf54d3` |
-| 6+ | Not started | — |
+| 6 — Adaptive weight tuning | Complete | see log below |
+| 7+ | Not started | — |
 
 `./gradlew clean test assembleDebug` from an empty build directory:
-**408 tests, 0 failures**, debug APK produced, and the app has now been run and exercised on an Android emulator. No commit carries an AI
+**455 tests, 0 failures**, debug APK produced, and every phase from 4 onward has been exercised on an Android emulator. No commit carries an AI
 co-author, collaborator or generated-by trailer, and no tracked file mentions
 one — audited after every commit.
 
@@ -171,7 +172,7 @@ reshuffle concern, but tell me if you meant it to differ now.
 
 ## What I did NOT get to, and why
 
-- **Phase 6 onward.** Not started.
+- **Phase 7 onward.** Not started.
 - **Any run on real hardware.** No emulator image and no attached device. This
   is the most important untested surface — see "What to review first".
 - **Instrumented Room tests.** Persistence is covered by mapper round-trip
@@ -1052,3 +1053,115 @@ exercised on the emulator.
   SQLite.
 - **Sweep runs at app open only.** Genuinely periodic catch-up wants the Phase 8
   `WorkManager` job.
+
+---
+
+## Phase 6 — Adaptive Weight Tuning
+
+**Status: COMPLETE** (clean build passes, 455 tests pass, verified on device, committed)
+
+### Deliverables checklist
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 6.1 | Feedback prompt after a reshuffle/prioritisation decision | **PASS** | `FeedbackPrompt` appears on Today immediately after a proposal is answered; verified on device |
+| 6.2 | Three responses: too aggressive / too lax / just right | **PASS** | Exactly those, plus Skip. "Just right" is a real answer that resets the streak, not a dismissal |
+| 6.3 | Small, explainable adjustment rule | **PASS** | Count consecutive identical responses; at three, move one named weight by one fixed step. No model, no learning rate, no decay |
+| 6.4 | N consecutive responses nudge a weight | **PASS** | `FEEDBACK_STREAK_THRESHOLD = 3`; tested at one, two, three and ten responses |
+| 6.5 | Fixed step | **PASS** | `WEIGHT_STEP = 0.05`; a ten-long streak moves exactly as far as a three-long one |
+| 6.6 | Bounded | **PASS** | `WEIGHT_MIN = 0.05`, `WEIGHT_MAX = 0.80`, so no term is ever switched off or allowed to drown out the others |
+| 6.7 | Explicitly no ML model | **PASS** | The entire rule is `leadingStreak` plus a comparison. It fits on a screen |
+| 6.8 | Log every adjustment with its cause | **PASS** | `weight_adjustments` is append-only and stores the feedback, the streak length, both values, and the rendered reason |
+| 6.9 | Settings screen showing current weights | **PASS** | Three sliders with live values; verified on device |
+| 6.10 | Recent adjustment history | **PASS** | Newest first, each with its timestamp, whether it was automatic or by hand, and the reason recorded at the time |
+| 6.11 | Manual override | **PASS** | Sliders write through `manualAdjustment`; verified on device — 0.50 → 0.30 with the other two rescaled and the change explained in the history |
+
+### Constraints checklist
+
+| Constraint | Result | How it is enforced |
+| --- | --- | --- |
+| Keep it debuggable | **PASS** | Every adjustment stores a rendered sentence naming the feedback, the streak, the old value and the new one. Nothing has to be recomputed to read the history |
+| Understand exactly why a weight changed, six months later | **PASS** | The reason is stored **as written**, not regenerated on read, so changing the rule later cannot retroactively alter the explanation for an older adjustment |
+| No ML | **PASS** | See 6.7 |
+| Engine stays pure Kotlin | **PASS** | `grep -rn "import android" scheduling-engine/src/` finds nothing |
+
+### Test results
+
+| Suite | Tests | Passed | Failed |
+| --- | --- | --- | --- |
+| `:scheduling-engine:test` | 326 | 326 | 0 |
+| `:app:testDebugUnitTest` | 129 | 129 | 0 |
+| **Total** | **455** | **455** | **0** |
+
+New: `WeightTuningTest` 30 (engine), `WeightsRepositoryTest` 17 (app).
+
+### Verified on device
+
+Installed and driven through the real UI:
+
+- Settings renders the three sliders at 0.50 / 0.35 / 0.15 with the explanation
+  and the empty-history note.
+- **Manual override works end to end.** Dragging deadline pressure to 0.30
+  rescaled importance to 0.49 and adherence to 0.21 — preserving their 7:3
+  ratio exactly — with the total still 1.00, and wrote the history entry: *"set
+  by hand: deadline pressure changed from 0.50 to 0.30; the other weights were
+  rescaled to keep the total at 1.00"*.
+- **The feedback prompt appears after answering a proposal**, with all three
+  options and the honest note that nothing changes on one answer.
+
+The same run also confirmed the Phase 4 and Phase 5 chain working live: the
+elapsed-slot sweep noticed a 00:00 block had passed unmarked, logged the miss,
+and that raised a proposal reading *"Because Chapter 1 was missed on
+2026-09-11..."*. That is four phases interlocking on real hardware.
+
+### One gap the device run exposed
+
+A lesson with no sub-tasks is scheduled **as itself**, but Today only mapped
+sub-tasks back to something completable — so a bare lesson offered "Missed" and
+nothing else, which is a strange thing to offer on its own. Today now maps bare
+lessons too and offers "Done" for them.
+
+### Decisions I had to make (not specified in PROJECT_PLAN.md)
+
+1. **Importance is never adjusted automatically.** The plan allows the rule to
+   touch any of the three. I deliberately excluded importance: it encodes the
+   user's own stated judgement of what matters, and an app quietly deciding its
+   owner cares less about their exams than they said would be overstepping. It
+   remains fully settable by hand, and the Settings screen says so.
+2. **Which weight moves.** "Too aggressive" lowers `w_deadline`, the term that
+   drives urgency; if it is already at the floor, `w_adherence_trend` is lowered
+   instead. "Too lax" does the reverse. Deterministic, and it touches both
+   pressure terms as the plan's prompt asks.
+3. **Weights are renormalised to sum to 1.0** after every change. Without it the
+   score would drift out of its 0.0-1.0 range and stop being comparable with
+   scores recorded before the change, which would quietly invalidate every
+   explanation already in the decision log. The untouched weights keep their
+   relative proportion, and the adjustment message says this happened.
+4. **Responses are "spent" once they trigger an adjustment.** Exactly the
+   responses making up the streak are marked, so a fourth complaint does not
+   immediately move the weight again on the strength of evidence already used.
+   This is the subtle one — without it the weights drift on half the evidence
+   they appear to need.
+5. **Nothing moves silently.** An adjustment surfaces a notice on Today saying
+   what changed. An app that retunes itself without telling anyone is exactly
+   what the debuggability constraint is guarding against.
+6. **Step 0.05, bounds 0.05-0.80, streak 3.** All invented, all in `Tuning`.
+7. **The slider commits on release**, not on every pixel — each change is an
+   append-only history entry and a drag would otherwise write fifty of them.
+8. **A "just right" streak never adjusts anything.** It is agreement, and the
+   rule only responds to sustained complaint.
+
+### Not done in this phase
+
+- **The feedback prompt only appears after a reshuffle proposal.** The plan says
+  "after a reshuffle/prioritisation decision", which this satisfies, but
+  proposals are deliberately rare — so in practice the app will ask for feedback
+  infrequently. If it turns out to ask too seldom to ever accumulate a streak,
+  the obvious fix is an occasional end-of-day prompt. Worth watching in use.
+- **No test that a moved weight changes the resulting schedule.** The weights
+  demonstrably reach the allocator (`buildDaySchedule` takes them, and
+  `AllocationTest` proves weights change which task wins a contested slot), but
+  there is no end-to-end test tying a feedback streak to a different day. The
+  pieces are each covered; the seam between them is not.
+- **Still emulator only.** Alarms, Doze and OEM battery management remain
+  unverifiable this way, and are the Phase 8 risks that actually matter.

@@ -34,7 +34,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen() {
     val viewModel = mendViewModel { app ->
-        RecoveryViewModel(app.recoveryRepository)
+        RecoveryViewModel(app.recoveryRepository, app.weightsRepository)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showEditor by remember { mutableStateOf(false) }
@@ -103,9 +103,15 @@ fun SettingsScreen() {
             HorizontalDivider()
         }
 
+        WeightsSection(
+            weights = state.weights,
+            history = state.adjustments,
+            onOverride = viewModel::overrideWeight,
+        )
+        HorizontalDivider()
+
         Text(
-            text = "Priority weights, adaptive tuning and notification settings " +
-                "arrive in later phases.",
+            text = "Notifications, alarms and widgets arrive in a later phase.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(20.dp),

@@ -114,6 +114,26 @@ object Tuning {
     /** How far back a catch-up sweep will ever look. */
     const val MAX_SWEEP_LOOKBACK_DAYS: Long = 14
 
+    // --- Adaptive weight tuning ----------------------------------------------
+
+    /**
+     * Consecutive identical complaints before a weight moves.
+     *
+     * Lower makes the app responsive but twitchy, and behaviour that changes
+     * after every schedule is impossible to reason about after the fact. Higher
+     * makes it stubborn. Three is the plan's own suggestion.
+     */
+    const val FEEDBACK_STREAK_THRESHOLD: Int = 3
+
+    /** How far a weight moves when it moves. */
+    const val WEIGHT_STEP: Double = 0.05
+
+    /** Floor, so no term is ever switched off entirely. */
+    const val WEIGHT_MIN: Double = 0.05
+
+    /** Ceiling, so no single term can drown out the other two. */
+    const val WEIGHT_MAX: Double = 0.80
+
     // --- The guilt trip ------------------------------------------------------
 
     /**

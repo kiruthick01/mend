@@ -29,7 +29,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mend.app.ui.components.FeedbackPrompt
 import com.mend.app.ui.components.GuiltTripCard
+import com.mend.app.ui.components.WeightChangeNotice
 import com.mend.app.ui.components.ReshuffleProposalCard
 import com.mend.app.ui.mendViewModel
 import com.mend.engine.allocation.DaySchedule
@@ -37,6 +39,7 @@ import com.mend.engine.interrupt.InterruptPlan
 import com.mend.engine.allocation.TaskPlacement
 import com.mend.engine.allocation.TimelineEntry
 import com.mend.engine.allocation.UnscheduledTask
+import com.mend.engine.model.Lesson
 import com.mend.engine.model.StaticBlock
 import com.mend.engine.model.SubTask
 import com.mend.engine.recovery.SleepStopAction
@@ -64,6 +67,7 @@ fun TodayScreen() {
             recovery = app.recoveryRepository,
             reshuffle = app.reshuffleRepository,
             adherence = app.adherenceRepository,
+            weights = app.weightsRepository,
             sweepState = app.sweepState,
         )
     }
@@ -76,6 +80,22 @@ fun TodayScreen() {
         state.interrupt?.let { InterruptBanner(it) }
 
         state.sleepStop?.let { SleepBanner(it) }
+
+        state.lastAdjustmentReason?.let { reason ->
+            WeightChangeNotice(
+                reason = reason,
+                onDismiss = viewModel::dismissAdjustmentNotice,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
+
+        state.feedbackPromptFor?.let { proposalId ->
+            FeedbackPrompt(
+                onRespond = { viewModel.recordFeedback(it, proposalId) },
+                onDismiss = viewModel::dismissFeedbackPrompt,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
 
         state.guiltTrips.forEach { trip ->
             GuiltTripCard(
@@ -107,7 +127,9 @@ fun TodayScreen() {
             DayTimeline(
                 schedule = schedule,
                 subTasksById = state.subTasksById,
+                bareLessonsById = state.bareLessonsById,
                 onMarkDone = viewModel::markDone,
+                onMarkLessonDone = viewModel::markLessonDone,
                 onMarkMissed = viewModel::markMissed,
             )
         }
@@ -246,7 +268,9 @@ private fun EmptyDay() {
 private fun DayTimeline(
     schedule: DaySchedule,
     subTasksById: Map<String, SubTask>,
+    bareLessonsById: Map<String, Lesson>,
     onMarkDone: (SubTask, TimeInterval?) -> Unit,
+    onMarkLessonDone: (Lesson, TimeInterval?) -> Unit,
     onMarkMissed: (String, String, TimeInterval) -> Unit,
 ) {
     val rows = buildRows(schedule)
@@ -261,7 +285,9 @@ private fun DayTimeline(
                 is Row.Work -> WorkRow(
                     entry = row.entry,
                     subTask = subTasksById[row.entry.task.id],
+                    bareLesson = bareLessonsById[row.entry.task.id],
                     onMarkDone = onMarkDone,
+                    onMarkLessonDone = onMarkLessonDone,
                     onMarkMissed = onMarkMissed,
                 )
                 is Row.Free -> FreeRow(row.interval)
@@ -311,7 +337,9 @@ private fun FixedRow(entry: TimelineEntry.Fixed) {
 private fun WorkRow(
     entry: TimelineEntry.Work,
     subTask: SubTask?,
+    bareLesson: Lesson?,
     onMarkDone: (SubTask, TimeInterval?) -> Unit,
+    onMarkLessonDone: (Lesson, TimeInterval?) -> Unit,
     onMarkMissed: (String, String, TimeInterval) -> Unit,
 ) {
     Column {
@@ -326,8 +354,14 @@ private fun WorkRow(
             modifier = Modifier.padding(start = 74.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            // Scheduled work is either a sub-task or a whole bare lesson;
+            // both are completable, and exactly one of them applies here.
             if (subTask != null) {
                 TextButton(onClick = { onMarkDone(subTask, entry.interval) }) {
+                    Text("Done")
+                }
+            } else if (bareLesson != null) {
+                TextButton(onClick = { onMarkLessonDone(bareLesson, entry.interval) }) {
                     Text("Done")
                 }
             }

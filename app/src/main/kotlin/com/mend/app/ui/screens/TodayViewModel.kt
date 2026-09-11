@@ -14,6 +14,7 @@ import com.mend.app.repository.ReshuffleRepository
 import com.mend.app.repository.ScheduleBuilder
 import com.mend.app.repository.StaticLayerRepository
 import com.mend.app.repository.SweepState
+import com.mend.app.repository.WeightsRepository
 import com.mend.app.repository.detectInterrupt
 import com.mend.engine.adherence.detectElapsedMisses
 import com.mend.engine.allocation.DaySchedule
@@ -22,13 +23,17 @@ import com.mend.engine.guilt.evaluateAllGuiltTrips
 import com.mend.engine.interrupt.InterruptPlan
 import com.mend.engine.model.AdherenceLogEntry
 import com.mend.engine.model.Habit
+import com.mend.engine.model.Lesson
 import com.mend.engine.model.ProtectedRecovery
 import com.mend.engine.model.StaticBlock
 import com.mend.engine.model.SubTask
+import com.mend.engine.model.Weights
 import com.mend.engine.recovery.SleepStopDecision
 import com.mend.engine.recovery.evaluateSleepStop
 import com.mend.engine.reshuffle.ReshuffleResponse
 import com.mend.engine.reshuffle.ScheduleInvalidatingEvent
+import com.mend.engine.weights.ScheduleFeedback
+import com.mend.engine.weights.WeightAdjustment
 import com.mend.engine.time.TimeInterval
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -57,12 +62,19 @@ class TodayViewModel(
     private val recovery: RecoveryRepository,
     private val reshuffle: ReshuffleRepository,
     private val adherence: AdherenceRepository,
+    private val weights: WeightsRepository,
     private val sweepState: SweepState? = null,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
 
     /** Warnings waved away for this session. Not persisted, and not a resolution. */
     private val dismissedGuiltTrips = MutableStateFlow<Set<String>>(emptySet())
+
+    /** The proposal whose feedback prompt is currently open, if any. */
+    private val pendingFeedbackFor = MutableStateFlow<String?>(null)
+
+    /** The most recent weight change, held until the user has seen it. */
+    private val lastAdjustment = MutableStateFlow<WeightAdjustment?>(null)
 
     /** The stored inputs the day is built from. */
     private data class Inputs(
@@ -85,11 +97,21 @@ class TodayViewModel(
 
     val state: StateFlow<TodayUiState> =
         combine(
-            inputs,
-            adherence.observeLog(),
-            dismissedGuiltTrips,
-        ) { input, log, dismissed ->
-            buildState(input, log, dismissed)
+            combine(
+                inputs,
+                adherence.observeLog(),
+                dismissedGuiltTrips,
+                weights.observeWeights(),
+            ) { input, log, dismissed, currentWeights ->
+                buildState(input, log, dismissed, currentWeights)
+            },
+            pendingFeedbackFor,
+            lastAdjustment,
+        ) { base, askingFor, adjustment ->
+            base.copy(
+                feedbackPromptFor = askingFor,
+                lastAdjustmentReason = adjustment?.describe(),
+            )
         }
             .onEach { it.schedule?.let(::dumpDecisionLog) }
             .stateIn(
@@ -102,6 +124,7 @@ class TodayViewModel(
         input: Inputs,
         log: List<AdherenceLogEntry>,
         dismissed: Set<String>,
+        weights: Weights,
     ): TodayUiState {
         val instant = now()
         val date = instant.toLocalDate()
@@ -113,6 +136,7 @@ class TodayViewModel(
             habits = input.habits,
             goals = input.goals,
             protectedRecovery = recoveryBlocks,
+            weights = weights,
             adherenceLog = log,
         )
 
@@ -149,6 +173,13 @@ class TodayViewModel(
                 .flatMap { it.lessons }
                 .flatMap { lesson -> lesson.subTasks.map { it.id to it } }
                 .toMap(),
+            // A lesson with no sub-tasks is scheduled as itself, so it needs to
+            // be completable from Today too. Without this it could only ever be
+            // marked missed, which is a strange thing to offer on its own.
+            bareLessonsById = input.goals
+                .flatMap { it.lessons }
+                .filter { it.hasNoSubTasks }
+                .associateBy { it.id },
             hasAnyInput = input.blocks.isNotEmpty() || input.habits.isNotEmpty() ||
                 input.goals.isNotEmpty() || input.sleepBlock != null,
         )
@@ -168,6 +199,35 @@ class TodayViewModel(
      * can be recomputed — and work since completed drops out on its own,
      * because it is no longer pending.
      */
+    /**
+     * Records what the user thought of a schedule, and says so if it moved a
+     * weight.
+     *
+     * Surfacing the change is the point. An app that quietly retunes itself
+     * becomes inexplicable to its own owner, which is exactly what the plan's
+     * debuggability constraint is guarding against.
+     */
+    fun recordFeedback(response: ScheduleFeedback, proposalId: String? = null) {
+        viewModelScope.launch {
+            val adjustment = weights.recordFeedback(response, proposalId, now())
+            lastAdjustment.value = adjustment
+            pendingFeedbackFor.value = null
+        }
+    }
+
+    /** Opens the feedback prompt for a proposal that has just been answered. */
+    fun askForFeedback(proposalId: String) {
+        pendingFeedbackFor.value = proposalId
+    }
+
+    fun dismissFeedbackPrompt() {
+        pendingFeedbackFor.value = null
+    }
+
+    fun dismissAdjustmentNotice() {
+        lastAdjustment.value = null
+    }
+
     private fun sweepMissedDays() {
         val state = sweepState ?: return
         viewModelScope.launch {
@@ -283,6 +343,18 @@ class TodayViewModel(
         }
     }
 
+    /** Marks a bare lesson done against the slot it was given. */
+    fun markLessonDone(lesson: Lesson, assignedSlot: TimeInterval?) {
+        viewModelScope.launch {
+            goals.setLessonDone(
+                lesson = lesson,
+                done = true,
+                now = now(),
+                assignedSlot = assignedSlot,
+            )
+        }
+    }
+
     /** Records that scheduled work did not happen, and offers to replan. */
     fun markMissed(taskId: String, taskTitle: String, assignedSlot: TimeInterval) {
         viewModelScope.launch {
@@ -316,7 +388,12 @@ class TodayViewModel(
 
     /** Answers an outstanding proposal. Decline is a real answer, not an absence. */
     fun respond(proposalId: String, response: ReshuffleResponse) {
-        viewModelScope.launch { reshuffle.respond(proposalId, response, now()) }
+        viewModelScope.launch {
+            reshuffle.respond(proposalId, response, now())
+            // The plan asks for feedback after a prioritisation decision, which
+            // is exactly this moment: a plan was just accepted or turned down.
+            askForFeedback(proposalId)
+        }
     }
 
     private fun dumpDecisionLog(schedule: DaySchedule) {
@@ -346,6 +423,11 @@ data class TodayUiState(
     val interrupt: InterruptPlan? = null,
     val proposal: ProposalUiState? = null,
     val guiltTrips: List<GuiltTrip> = emptyList(),
+    /** Proposal id whose feedback prompt is open, or null. */
+    val feedbackPromptFor: String? = null,
+    /** The most recent weight change, until acknowledged. */
+    val lastAdjustmentReason: String? = null,
     val subTasksById: Map<String, SubTask> = emptyMap(),
+    val bareLessonsById: Map<String, Lesson> = emptyMap(),
     val hasAnyInput: Boolean = false,
 )

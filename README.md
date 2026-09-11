@@ -12,10 +12,10 @@ rewrites your day.
 
 ## Current phase
 
-**Phase 5 — Adherence logging and the guilt-trip trigger.** Every completion
-and every miss is now written down, and that history drives a warning that
-fires only for work with a real-world consequence, only when the pace actually
-being sustained will miss the deadline.
+**Phase 6 — Adaptive weight tuning.** The priority weights now move with
+sustained feedback, by the least clever rule that could work: three consecutive
+identical complaints move one named weight by one fixed step, and every change
+is recorded with the reason it was made.
 
 Done so far:
 
@@ -30,9 +30,10 @@ Done so far:
   with a configurable hard stop, and the delay-negotiation tier.
 - **Phase 5** — app-wide adherence logging, rolling adherence and delay
   statistics, and the deadline-projection warning.
+- **Phase 6** — the feedback prompt, bounded rule-based weight adjustment, and
+  a Settings screen showing the weights and every change made to them.
 
-Not yet built: adaptive weight tuning, any AI layer, alarms, notifications and
-widgets.
+Not yet built: any AI layer, alarms, notifications and widgets.
 
 The full phase plan lives in [PROJECT_PLAN.md](PROJECT_PLAN.md).
 

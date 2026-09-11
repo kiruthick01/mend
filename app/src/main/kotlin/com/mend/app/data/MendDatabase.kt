@@ -10,7 +10,10 @@ import com.mend.app.data.dao.GoalDao
 import com.mend.app.data.dao.LessonDao
 import com.mend.app.data.dao.ReshuffleProposalDao
 import com.mend.app.data.dao.ScheduleEventDao
+import com.mend.app.data.dao.ScheduleFeedbackDao
 import com.mend.app.data.dao.SleepLogDao
+import com.mend.app.data.dao.WeightAdjustmentDao
+import com.mend.app.data.dao.WeightsDao
 import com.mend.app.data.dao.SubTaskDao
 import com.mend.app.data.dao.TaskDao
 import com.mend.app.data.entity.AdherenceLogEntity
@@ -18,7 +21,10 @@ import com.mend.app.data.entity.GoalEntity
 import com.mend.app.data.entity.LessonEntity
 import com.mend.app.data.entity.ReshuffleProposalEntity
 import com.mend.app.data.entity.ScheduleEventEntity
+import com.mend.app.data.entity.ScheduleFeedbackEntity
 import com.mend.app.data.entity.SleepLogEntity
+import com.mend.app.data.entity.WeightAdjustmentEntity
+import com.mend.app.data.entity.WeightsEntity
 import com.mend.app.data.entity.SubTaskEntity
 import com.mend.app.data.entity.TaskEntity
 
@@ -36,8 +42,11 @@ import com.mend.app.data.entity.TaskEntity
         SleepLogEntity::class,
         ScheduleEventEntity::class,
         ReshuffleProposalEntity::class,
+        WeightsEntity::class,
+        WeightAdjustmentEntity::class,
+        ScheduleFeedbackEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -51,6 +60,9 @@ abstract class MendDatabase : RoomDatabase() {
     abstract fun sleepLogDao(): SleepLogDao
     abstract fun scheduleEventDao(): ScheduleEventDao
     abstract fun reshuffleProposalDao(): ReshuffleProposalDao
+    abstract fun weightsDao(): WeightsDao
+    abstract fun weightAdjustmentDao(): WeightAdjustmentDao
+    abstract fun scheduleFeedbackDao(): ScheduleFeedbackDao
 
     companion object {
         private const val DATABASE_NAME = "mend.db"

@@ -8,6 +8,7 @@ import com.mend.app.repository.RecoveryRepository
 import com.mend.app.repository.ReshuffleRepository
 import com.mend.app.repository.StaticLayerRepository
 import com.mend.app.repository.SweepState
+import com.mend.app.repository.WeightsRepository
 
 class MendApplication : Application() {
 
@@ -15,6 +16,14 @@ class MendApplication : Application() {
 
     val staticLayerRepository: StaticLayerRepository by lazy {
         StaticLayerRepository(database.taskDao(), reshuffleRepository)
+    }
+
+    val weightsRepository: WeightsRepository by lazy {
+        WeightsRepository(
+            weightsDao = database.weightsDao(),
+            adjustmentDao = database.weightAdjustmentDao(),
+            feedbackDao = database.scheduleFeedbackDao(),
+        )
     }
 
     val sweepState: SweepState by lazy { SweepState(this) }
