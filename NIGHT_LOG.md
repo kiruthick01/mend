@@ -2,8 +2,7 @@
 
 ## Summary
 
-**Phases 0, 1, 2 and 3 are complete, verified and committed. Phase 4 was not
-started, as instructed.**
+**Phases 0 through 4 are complete, verified and committed.**
 
 | Phase | Status | Commit |
 | --- | --- | --- |
@@ -11,16 +10,22 @@ started, as instructed.**
 | 1 — Data model & static layer | Complete | `a4dc736` |
 | 2 — Goals, lessons, sub-tasks, progress | Complete | `ffc3bdd` |
 | 3 — Priority scoring & slot allocation | Complete | `8620a66` |
-| 4+ | **Not started** | — |
+| 4 — Reshuffling, interrupts, protected sleep | Complete | `f0a10c2` |
+| 5+ | Not started | — |
 
 `./gradlew clean test assembleDebug` from an empty build directory:
-**172 tests, 0 failures**, debug APK produced. No commit carries an AI
+**295 tests, 0 failures**, debug APK produced. No commit carries an AI
 co-author, collaborator or generated-by trailer, and no tracked file mentions
 one — audited after every commit.
 
 ### What to review first
 
-1. **The three product decisions I had to guess at.** They are questions 3, 4
+0. **Question 9 — Decline does not yet mean "keep the old plan".** New in
+   Phase 4 and the one place the implementation is thinner than it looks.
+   Schedules are derived rather than stored, so Decline currently means
+   "acknowledged, stop asking" rather than "revert". Fixing it needs schedule
+   pinning, which is a design call I did not want to make for you.
+1. **The product decisions I had to guess at.** Questions 3, 4
    and 5 under "Needs your input" below: where a partial-window block sits
    inside its window, what "pace" actually means, and how deadline urgency
    should curve. Each is load-bearing, each shapes behaviour you will feel
@@ -52,10 +57,13 @@ question 1 under "Needs your input".**
 
 ## Needs your input
 
-Seven open questions, most-consequential first. Items 3-7 are places where the
+Eleven open questions, most-consequential first. Most are places where the
 plan did not answer something I needed, so I picked a defensible default,
 implemented it behind a named constant or a field, and wrote it down here
 rather than letting it pass silently.
+
+Questions 9-11 are new in Phase 4 and are recorded in that phase's section
+below; question 9 in particular is worth reading first.
 
 ### 1. Was installing a toolchain on this machine acceptable?
 
@@ -162,7 +170,7 @@ reshuffle concern, but tell me if you meant it to differ now.
 
 ## What I did NOT get to, and why
 
-- **Phase 4 onward.** Not started, per your instruction to stop after Phase 3.
+- **Phase 5 onward.** Not started.
 - **Any run on real hardware.** No emulator image and no attached device. This
   is the most important untested surface — see "What to review first".
 - **Instrumented Room tests.** Persistence is covered by mapper round-trip
