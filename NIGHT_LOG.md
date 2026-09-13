@@ -14,7 +14,7 @@
 | 5 — Adherence logging & guilt-trip trigger | Complete | `faf54d3` |
 | 6 — Adaptive weight tuning | Complete | `c15d02b` |
 | 7 — AI layer (NLP parsing, message generation) | Complete | `9f968e9` |
-| 8 — Notifications, alarms, widgets, lock screen | Complete | `PHASE8_COMMIT` |
+| 8 — Notifications, alarms, widgets, lock screen | Complete | `09a1b51` |
 | 9+ | Not started | — |
 
 `./gradlew build` from an empty build directory: **577 tests, 0 failures**,
