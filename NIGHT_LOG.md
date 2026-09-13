@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Phases 0 through 7 are complete, verified and committed.**
+**Phases 0 through 8 are complete, verified and committed.**
 
 | Phase | Status | Commit |
 | --- | --- | --- |
@@ -14,14 +14,26 @@
 | 5 — Adherence logging & guilt-trip trigger | Complete | `faf54d3` |
 | 6 — Adaptive weight tuning | Complete | `c15d02b` |
 | 7 — AI layer (NLP parsing, message generation) | Complete | `9f968e9` |
-| 8+ | Not started | — |
+| 8 — Notifications, alarms, widgets, lock screen | Complete | `PHASE8_COMMIT` |
+| 9+ | Not started | — |
 
-`./gradlew clean test assembleDebug` from an empty build directory:
-**488 tests, 0 failures**, debug APK produced, and every phase from 4 onward has been exercised on an Android emulator. No commit carries an AI
-co-author, collaborator or generated-by trailer, and no tracked file mentions
-one — audited after every commit.
+`./gradlew build` from an empty build directory: **577 tests, 0 failures**,
+lint clean, debug and release APKs produced. Every phase from 4 onward has been
+exercised on an Android emulator, and Phase 8 was verified on a real phone — a
+vivo iQOO Z7 5G on Android 15 — with the screen off and the device held in deep
+Doze. No commit carries an AI co-author, collaborator or generated-by trailer,
+and no tracked file mentions one — audited after every commit.
 
 ### What to review first
+
+-1. **Two settings on your phone that Mend cannot set for you.** Phase 8
+   measured this rather than guessing: with Android's battery exemption removed,
+   a normal-tier alarm **never arrived** — your phone froze the app and deferred
+   the broadcast indefinitely. With the exemption granted, the same alarm fired
+   nine seconds after its target. Settings → "Will alarms actually fire?" will
+   tell you what is missing; the vivo autostart setting underneath it is one
+   Android has no API for at all, so it has to be done by hand. **Until both are
+   on, treat every non-critical reminder as optional.**
 
 0. **Question 9 — Decline does not yet mean "keep the old plan".** New in
    Phase 4 and the one place the implementation is thinner than it looks.
@@ -40,13 +52,12 @@ one — audited after every commit.
 3. **`.../priority/Priority.kt`** — the scoring function and, in particular,
    the tie-breaking order. If two tasks are equal, this decides which one you
    actually do.
-4. **Run it on a device.** This is the biggest gap in the night's work: the APK
-   builds and every rule is unit tested, but **no screen has ever been rendered
-   on real hardware**. There is no emulator image on this machine and no device
-   was attached. Layout bugs, theming problems and Room migration behaviour are
-   all still unobserved. Install `app/build/outputs/apk/debug/app-debug.apk`,
-   add a couple of blocks and a goal, and see whether the Today screen is
-   actually legible.
+4. **Phase 8's decision A — the "lock screen widget".** Android removed lock
+   screen widgets in API 21, so there is nothing to build. I implemented the
+   lock screen surface as a persistent, silent, publicly-visible notification
+   carrying the same content and the same Done button. That is what lock screen
+   widgets became, but it is an interpretation of a deliverable rather than the
+   deliverable, so it is the one to disagree with if you meant something else.
 
 ### Environment note
 
@@ -60,13 +71,14 @@ question 1 under "Needs your input".**
 
 ## Needs your input
 
-Thirteen open questions, most-consequential first. Most are places where the
+Fifteen open questions, most-consequential first. Most are places where the
 plan did not answer something I needed, so I picked a defensible default,
 implemented it behind a named constant or a field, and wrote it down here
 rather than letting it pass silently.
 
-Questions 9-11 are new in Phase 4 and 12-13 in Phase 5; each is recorded in
-that phase's section below. Question 9 in particular is worth reading first.
+Questions 9-11 are new in Phase 4, 12-13 in Phase 5, 14-15 in Phase 7 and
+16-17 in Phase 8; each is recorded in that phase's section below. Question 9 in
+particular is worth reading first.
 
 ### 1. Was installing a toolchain on this machine acceptable?
 
@@ -1313,3 +1325,265 @@ no key ships.
   it was left out because with no key configured it would be untestable, and
   shipping an unexercised path felt worse than shipping a smaller one.
 - **Still emulator only.** Unchanged, and still the Phase 8 concern.
+
+---
+
+## Phase 8 — Notifications, Alarms, Widgets & Lock Screen
+
+**Status: COMPLETE** (clean build passes, 577 tests pass, verified on a real
+phone under Doze with the screen off, committed)
+
+### Why this section is longer than the others
+
+Every phase before this one could be judged by reading code and running tests.
+This one cannot. An alarm that does not arrive looks exactly like an alarm that
+was never set. So this section leans much harder on device evidence, and where
+the evidence contradicted what the code appeared to do, the device won.
+
+Four real defects came out of that, and none of them could have been caught by
+a unit test. One of them — the last — would have made every alarm in the app
+stop working permanently after the first reboot. They are written up in full
+below, because finding them is the whole point of the phase.
+
+The device is a **vivo iQOO Z7 5G (I2207), Android 15 / API 35** — which is
+fortunate, because it is one of the aggressive-battery-management OEMs the plan
+names, and therefore a harder test than a Pixel would have been.
+
+### Deliverables checklist
+
+| # | Deliverable | Result | Evidence |
+| --- | --- | --- | --- |
+| 8.1 | Exact alarms for time-critical items | **PASS** | `AlarmScheduler.arm` picks one of three APIs by criticality. All three observed on hardware: `setAlarmClock` (`flags=0x3`, with an `Alarm clock:` block), `setExactAndAllowWhileIdle` (`flags=0x9`, `exactAllowReason=permission`), and `setWindow` on the emulator before exact-alarm permission was granted |
+| 8.2 | …for interrupts | **PASS** | `interruptAlarm()` builds a `CRITICAL` / `INTERRUPT` alarm. The coordinator holds it across replans so an unrelated edit cannot silently drop it |
+| 8.3 | …for the sleep hard stop | **PASS** | `dumpsys alarm` on the phone reported it as **`Next wake from idle`** — the platform's own name for the alarm that will bring the device out of Doze |
+| 8.4 | …for task start times | **PASS** | One alarm per placement, at the start of its **first** slice. Split work gets one alarm, not one per slice: three buzzes for one task is how an app teaches you to silence it |
+| 8.5 | WorkManager job for the daily replanning check | **PASS** | `DailyReplanWorker`, periodic 1 day with a 3h flex window, targeted at 04:00, `ExistingPeriodicWorkPolicy.KEEP` |
+| 8.6 | WorkManager for less time-critical reminders | **INTERPRETED — see C** | The daily replan is the only worker. Every reminder this app has is tied to a specific minute, which WorkManager cannot promise |
+| 8.7 | Home screen widget (Glance): current/next task | **PASS** | Placed on a launcher and photographed rendering `Reading 10 / 2m left · until 22:31 / Next: Grammar 26 at 22:31` |
+| 8.8 | …time remaining | **PASS** | `NowNext.remainingLine()`, six unit tests in `NowNextTest` |
+| 8.9 | …quick mark-done action | **PASS** | Tapped on a device. Database afterwards: `Reading 10 / DONE / 9` and `Grammar 26 / DONE / 25`, with matching `ON_TIME` rows in the adherence log |
+| 8.10 | **Lock screen widget** | **INTERPRETED — see A** | Android has had no lock screen widget since API 21. Implemented as `OngoingNote`. Confirmed live on the phone: `channel=mend_ongoing flags=ONGOING_EVENT|ONLY_ALERT_ONCE category=status vis=PUBLIC actions=1` |
+| 8.11 | Notification channels tuned by criticality | **PASS** | Four channels. On the phone the wind-down arrived on `mend_ambient` and the hard stop on `mend_critical` — the split is real at delivery time, not only at creation |
+| 8.12 | Document and handle OEM battery management | **PASS** | `OemGuidance` covers vivo/iQOO, Xiaomi/Redmi/POCO, OPPO/realme/OnePlus, Huawei/Honor, Samsung. The vivo entry rendered on the test phone and its settings shortcut resolved. **And the guidance turned out to be literally correct — see the A/B below** |
+| 8.13 | Manual test pass on a real device: **screen off** | **PASS** | Both alarms fired with `mWakefulness=Asleep`, 9s and 1s after their targets |
+| 8.14 | …**app killed** | **PARTIAL — see below** | Verified with the app backgrounded and eligible for reclaim; `am kill` would not evict it while its activity was still in the task stack. A genuine `force-stop` is untested, and Android cancels alarms on force-stop by design |
+| 8.15 | …**Doze mode active** | **PASS for the normal tier, PARTIAL for the critical one** | The wind-down fired in full deep Doze (`deviceidle get deep = IDLE`), unplugged, screen off. The hard stop fired with the screen asleep but the device only in light idle — see the note under the table |
+
+### The A/B that matters
+
+The same alarm, the same phone, the same Doze state — the only difference being
+Android's battery exemption:
+
+| Run | Battery exemption | `setExactAndAllowWhileIdle` wind-down | `setAlarmClock` hard stop |
+| --- | --- | --- | --- |
+| First, 22:35 | **Removed** | **Never arrived.** `dumpsys alarm` recorded `Reason=frozen` against it — the process was frozen and broadcast delivery deferred, including through an `IDLE_MAINTENANCE` window | not observed (USB dropped mid-test) |
+| Second, 22:50 / 23:05 | **Granted** | **Fired at 22:50:09** — 9s after its 22:50:00 target, with `deviceidle get deep = IDLE` | **Fired at 23:05:01** — 1s after its 23:05:00 target |
+
+One honesty note on that last cell. The hard stop fired with the screen asleep
+and the device in `INACTIVE` — light idle — not deep. Restoring the phone's
+battery state mid-session left it unwilling to re-enter deep idle before the
+alarm came due, and I was not willing to hold someone's personal phone in forced
+Doze for another cycle to get a tidier number. So: the **weaker** of the two
+APIs is the one verified under full deep Doze, and the stronger one is verified
+only under light idle. The platform's own view of the stronger one is in its
+favour — `dumpsys alarm` listed it as `Next wake from idle` — but that is
+supporting evidence, not the measurement, and it is worth one more run if you
+want it airtight.
+
+That is the whole argument for the reliability screen in Settings, measured
+rather than assumed. The battery exemption is not advice on this phone; it is
+the difference between an alarm and no alarm. The OEM autostart setting sits one
+layer beyond even that, and Mend genuinely cannot check it — which is exactly
+what the Settings text says.
+
+### Four defects the device found
+
+**1. Two components fighting over the alarm set.** The Today screen and the
+coordinator were each computing a plan and applying it. With logging on they can
+be seen cancelling one another's alarms in turn —
+
+```
+armed 3, cancelled 4, 0 unchanged     (thread A)
+armed 4, cancelled 3, 0 unchanged     (thread B)
+```
+
+— a second apart, leaving the stored set describing neither. Every unit test
+passed throughout; the symptom in real life is an alarm that sometimes does not
+arrive.
+
+*Fix:* the coordinator is now the only writer. Callers say "the day changed";
+they do not hand in a plan, because a plan computed a moment ago can undo a
+newer one. Read, diff, arm and store is one critical section under a `Mutex`.
+The Today screen replans on a **signature** of the alarm-relevant state, so a
+dismissed warning or an opened dialog no longer rebuilds the day. Re-tested on
+the emulator: `armed 2, cancelled 2, 0 unchanged`, then `plan unchanged; 2 still
+armed`.
+
+**2. Changing your bedtime did not move the bedtime alarm.** `diffAlarms`
+compared plans **by id**. A task alarm's id carries its start time, so moving a
+task changes the id and the diff notices. The bedtime alarms are identified by
+date alone — `sleep-stop-2026-09-13` — so an edited bedtime kept the id and
+changed only the time, and the diff called it "already armed". Observed
+directly: bedtime changed from 23:20 to 23:10, and the hard stop stayed sitting
+at 22:50.
+
+*Fix:* the diff compares the whole alarm. One whose id survives but whose
+content changed is re-armed and **not** cancelled first, because arming replaces
+an alarm with the same id atomically, where cancel-then-arm leaves a window with
+nothing armed at all. Two regression tests in `AlarmPlanTest`. Verified on the
+phone afterwards: wind-down 22:50:00, hard stop 23:05:00, as the edit intended.
+
+**3. The boot receiver was never going to run.** This is the bad one. Alarms do
+not survive a reboot, so `BootReceiver` exists to re-plan the day on
+`BOOT_COMPLETED` — and it was registered `android:exported="false"`, copied from
+the two receivers above it in the manifest, where false is correct.
+
+It is not correct here. A non-exported receiver accepts broadcasts only from
+senders sharing its own uid, and `BOOT_COMPLETED` comes from the system, uid
+1000. So the receiver would simply never have been called. **After the first
+reboot, Mend would have gone permanently silent** — no alarms, no widget
+updates, nothing, until the app happened to be opened by hand. Which is the
+precise failure the whole app exists to prevent, and it would have looked like
+nothing at all from the outside.
+
+Tested rather than reasoned about, using a package replace, which the system
+sends the same way:
+
+```
+exported="false"  → install -r → (no log at all)
+exported="true"   → install -r → "re-arming after android.intent.action.MY_PACKAGE_REPLACED"
+```
+
+The corroborating run on the phone was inconclusive rather than confirming:
+**this vivo emits no app log lines at all** — `logcat | grep Mend` returns zero
+even with the app in the foreground — which is why every piece of device
+evidence in this section comes from `dumpsys` rather than logcat. Worth knowing
+before you try to debug anything on it.
+
+*Fix:* `BootReceiver` is exported, with the reasoning written into the manifest
+next to it. This is safe: `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED` are both
+protected broadcasts that only the system may send, so no other app can reach
+it. `AlarmReceiver` and `DoneReceiver` stay non-exported — those are triggered
+by our own `PendingIntent`s, which run as our own uid.
+
+**4. A double tap on the widget logged two completions.** The adherence log is
+append-only and the widget takes a moment to redraw, so tapping Done twice wrote
+two rows — quietly overstating how much was done, which feeds adherence
+pressure, which feeds the schedule. Caught by reading the database after
+testing: two `ON_TIME` rows 35 seconds apart for one sub-task.
+
+*Fix:* `pendingWork()` refuses work that is already done. Six tests in
+`PendingWorkTest`.
+
+**A fifth, found by reading rather than running:** the same receiver also
+declared `LOCKED_BOOT_COMPLETED`, which cannot arrive unless the receiver is
+direct-boot aware, and would be useless if it did — the database is in
+credential-encrypted storage and is unreadable until first unlock. Removed
+rather than left as a filter that looks like it does something. The consequence,
+now written down: alarms come back at first unlock, not at power-on.
+
+### Two bugs fixed that were not in the deliverables
+
+**Ticking a sub-task off moved it.** `setSubTaskDone` wrote the whole row back
+with a caller-supplied `orderIndex`, and both callers supplied `0`. Sub-tasks
+are read back `sortedBy { orderIndex }`, so completing sub-task 25 of a lesson
+silently moved it to the front — a change to the order of a sequential goal as a
+side effect of ticking something off. The stored position is now kept by
+default. Four tests in `SubTaskOrderTest`, and confirmed on a device: the two
+sub-tasks completed through the widget kept indices 9 and 25.
+
+**The coordinator race**, above. Both are defects rather than features, which is
+why they were fixed inside this phase rather than deferred.
+
+### Constraints checklist
+
+| Constraint | Result | How |
+| --- | --- | --- |
+| Treat reliability as seriously as engine correctness | **PASS** | Four defects found and fixed, each invisible to the test suite, one of which would have killed the app permanently after the first reboot; the A/B above was measured rather than assumed |
+| "Not an average buggy APK" | **PASS, with the caveat stated in the app itself** | The critical path is verified on hardware. Where the platform can still drop an alarm, Settings says so plainly instead of the app pretending otherwise |
+| Engine stays pure Kotlin, no Android | **PASS** | `AlarmPlan.kt` lives in `scheduling-engine`; `grep -rn "android\." scheduling-engine/src/main/` returns nothing |
+| No scheduling logic as an AI call | **PASS** | Nothing in this phase touches the AI layer |
+| Nothing beyond the phase's deliverables | **PASS** | The two extra changes are bug fixes, not capabilities |
+
+### Interpretations and decisions
+
+**A. "Lock screen widget" is not a thing Android has.** Keyguard widgets were
+removed in API 21; `widgetCategory="keyguard"` is still accepted and ignored by
+every launcher. What lock screen widgets actually became is a persistent
+notification, so that is what the lock screen surface is: the same content as
+the widget, silent, `VISIBILITY_PUBLIC` so it is readable without unlocking,
+with the same Done action. `keyguard` was dropped from the widget's categories
+rather than left in as a claim the app cannot honour. **If you wanted something
+else here, this is the decision to push back on.**
+
+**B. It is deliberately not a foreground service.** Holding one all day to draw
+a line of text is precisely the battery liability this phase is meant to avoid,
+and it would hand every OEM battery manager a reason to kill the app — which
+would take the alarms with it.
+
+**C. Routine reminders stayed on AlarmManager.** A wind-down warning at 22:50 is
+not a wind-down warning at 23:20, and WorkManager cannot promise a minute. The
+daily replan, which only needs a morning, is the job that genuinely suits a
+worker, and that is what it got.
+
+**D. The interrupt alarm lives in the coordinator, not the caller.** It is not
+part of the planned day, so armed separately it would be lost at the next
+replan. It is held and merged into every plan until cleared or past.
+
+**E. Notification permission is asked for once, on first launch, and the answer
+is not acted on.** A refusal is recoverable: Settings reports the real state and
+offers the way back.
+
+**F. `setAlarmClock` is spent sparingly.** It is the only genuinely Doze-exempt
+alarm API and it costs a permanent alarm icon in the status bar. Only the
+bedtime hard stop and emergency interrupts get it. Making every task start an
+alarm clock would work, and would make the app insufferable.
+
+### Test results
+
+`./gradlew build` from clean:
+
+- **scheduling-engine: 419 tests, 0 failures**
+- **app: 158 tests, 0 failures**
+- **TOTAL: 577 tests, 0 failures**, lint clean, debug and release APKs produced
+
+New this phase: `AlarmPlanTest` (engine), and `NowNextTest`, `SubTaskOrderTest`
+and `PendingWorkTest` (app).
+
+Worth saying plainly: **the test suite did not find any of the four defects
+above, and could not have.** Three of them were concurrency or platform
+behaviour, and the fourth was a single word in a manifest. That is the argument
+for this phase's device work, and the argument for doing the same in Phase 9
+rather than trusting a green build.
+
+APK: debug 18.8 MB, release (unsigned, unshrunk) 12.6 MB. The growth over
+Phase 7's 16.6 MB is Glance and WorkManager.
+
+### New open questions
+
+**16. The lock screen surface is an interpretation, not the deliverable.**
+Decision A above. Android has no lock screen widgets to build, so this is a
+persistent notification instead. Say if you wanted something else.
+
+**17. Two phone settings Mend cannot set, and one it cannot even read.**
+Android's battery exemption is requestable and now demonstrably load-bearing on
+your phone. The vivo autostart setting under Settings → More settings →
+Permission management has no API at all: Mend cannot detect it, request it, or
+verify it, and can only tell you where it lives. If alarms go quiet after a few
+days of not opening the app, that is the first thing to check.
+
+### Not done in this phase
+
+- **A genuine `force-stop` test.** Android cancels an app's alarms when the user
+  force-stops it, by design, and nothing can re-arm them until the app is opened
+  again — no receiver fires either. Worth knowing, not worth working around.
+- **No automated test of the widget's rendering.** Glance's testing artifact
+  needs Robolectric, which this module does not have. The content it draws is
+  unit tested; the drawing was verified by placing it on a launcher.
+- **Timezone and DST are untested.** Alarms are stored as `LocalDateTime` and
+  converted at arming time, so a timezone change between arming and firing would
+  move them. The plan puts this in Phase 9's QA pass; flagged here because this
+  is the phase that made it matter.
+- **The live Anthropic round trip is still unexercised.** Unchanged from
+  Phase 7, and still the oldest open thread.
+- **Widget preview image is the app icon.** Functional, not attractive.

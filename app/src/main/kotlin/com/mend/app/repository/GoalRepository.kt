@@ -159,19 +159,26 @@ class GoalRepository(
      *
      * Completing stamps [now] so velocity can be measured later; un-completing
      * clears it, because a sub-task that is not done has no completion time.
+     *
+     * [orderIndex] is left null by every caller that is only recording a tick.
+     * A sub-task is stored as a whole row, so writing one back needs a position
+     * for it, and supplying a made-up one reorders the lesson as a side effect
+     * of ticking something off. Null means "leave it where it is".
      */
     suspend fun setSubTaskDone(
         subTask: SubTask,
         done: Boolean,
-        orderIndex: Int,
+        orderIndex: Int? = null,
         now: LocalDateTime = LocalDateTime.now(),
         assignedSlot: TimeInterval? = null,
     ) {
+        val position = orderIndex ?: subTaskDao.orderIndexOf(subTask.id) ?: 0
+
         subTaskDao.upsert(
             subTask.copy(
                 status = if (done) ProgressStatus.DONE else ProgressStatus.NOT_STARTED,
                 completedAt = if (done) now else null,
-            ).toEntity(orderIndex),
+            ).toEntity(position),
         )
 
         // Only completion is logged. Un-ticking is a correction to the current

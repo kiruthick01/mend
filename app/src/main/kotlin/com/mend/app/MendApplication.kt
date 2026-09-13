@@ -6,6 +6,10 @@ import com.mend.app.ai.AiSettings
 import com.mend.app.ai.AnthropicAiBridge
 import com.mend.app.ai.AnthropicClient
 import com.mend.app.ai.OfflineAiBridge
+import com.mend.app.alarms.AlarmCoordinator
+import com.mend.app.alarms.AlarmState
+import com.mend.app.alarms.DailyReplanWorker
+import com.mend.app.alarms.MendNotifications
 import com.mend.app.data.MendDatabase
 import com.mend.app.repository.AdherenceRepository
 import com.mend.app.repository.GoalRepository
@@ -17,6 +21,27 @@ import com.mend.app.repository.SweepState
 import com.mend.app.repository.WeightsRepository
 
 class MendApplication : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+        // Channels must exist before anything tries to post to them, including
+        // an alarm that fires into a cold process.
+        MendNotifications.ensureChannels(this)
+        DailyReplanWorker.schedule(this)
+    }
+
+    val alarmState: AlarmState by lazy { AlarmState(this) }
+
+    val alarmCoordinator: AlarmCoordinator by lazy {
+        AlarmCoordinator(
+            context = this,
+            staticLayer = staticLayerRepository,
+            goals = goalRepository,
+            recovery = recoveryRepository,
+            weights = weightsRepository,
+            state = alarmState,
+        )
+    }
 
     val database: MendDatabase by lazy { MendDatabase.getInstance(this) }
 

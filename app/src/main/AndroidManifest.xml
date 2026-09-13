@@ -9,6 +9,33 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      Notifications are how the schedule actually reaches you. Runtime-granted
+      from Android 13; the app works without it but is reduced to something you
+      have to remember to open.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Exact alarms. The bedtime hard stop and an emergency interrupt have to
+      land at a specific minute; an inexact alarm may be deferred for hours
+      under Doze, which for this app means not arriving at all.
+
+      SCHEDULE_EXACT_ALARM is user-grantable in Settings and is what we request.
+      USE_EXACT_ALARM is deliberately NOT declared: it is reserved for
+      alarm-clock and calendar apps and would risk a Play Store rejection.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Re-arm alarms after a reboot; they do not survive one by themselves. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      Asking to be exempt from battery optimisation. Requested explicitly with
+      an explanation rather than silently, and the app stays usable if refused.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:name=".MendApplication"
         android:allowBackup="true"
@@ -29,6 +56,62 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Where an alarm lands. Not exported: nothing outside this app has any
+          business firing Mend's alarms.
+        -->
+        <receiver
+            android:name=".alarms.AlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!--
+          The done button on the widget and on notifications. Not exported for
+          the same reason: nothing outside this app should be able to tick work
+          off on the user's behalf.
+        -->
+        <receiver
+            android:name=".alarms.DoneReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!--
+          Alarms do not survive a reboot or an app update, so both are caught
+          and the day is re-planned from scratch.
+
+          This one MUST be exported, unlike the two above. These broadcasts come
+          from the system (uid 1000), and a non-exported receiver accepts only
+          senders sharing our own uid — so with exported="false" the receiver is
+          simply never called and the alarms never come back. Verified: with it
+          false, a package replace produced no log at all; with it true, the
+          receiver ran immediately.
+
+          Exporting it is safe because both actions are protected broadcasts
+          that only the system is permitted to send. Any other app attempting it
+          is refused by the platform, not by us.
+        -->
+        <receiver
+            android:name=".alarms.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".widget.MendWidgetReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mend_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

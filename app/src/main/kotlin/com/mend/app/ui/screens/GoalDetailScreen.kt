@@ -127,12 +127,10 @@ fun GoalDetailScreen(goalId: String, onBack: () -> Unit) {
                     LessonBlock(
                         lesson = lesson,
                         onToggleLesson = { done -> viewModel.setLessonDone(lesson, done) },
+                        // No position is passed: this is a tick, not a move, and
+                        // the sub-task keeps the one it already has.
                         onToggleSubTask = { subTask, done ->
-                            viewModel.setSubTaskDone(
-                                subTask,
-                                done,
-                                lesson.subTasks.indexOfFirst { it.id == subTask.id },
-                            )
+                            viewModel.setSubTaskDone(subTask, done)
                         },
                         onEditLesson = {
                             editingLesson = lesson

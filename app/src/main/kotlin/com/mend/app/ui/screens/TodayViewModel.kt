@@ -3,15 +3,16 @@ package com.mend.app.ui.screens
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mend.app.alarms.AlarmCoordinator
 import com.mend.app.data.entity.ReshuffleProposalEntity
 import com.mend.app.data.mapper.changeLines
 import com.mend.app.repository.AdherenceRepository
 import com.mend.app.repository.GoalRepository
 import com.mend.app.repository.GoalWithLessons
 import com.mend.app.repository.MissSweeper
+import com.mend.app.repository.ProposalInterpreter
 import com.mend.app.repository.RecoveryRepository
 import com.mend.app.repository.ReshuffleRepository
-import com.mend.app.repository.ProposalInterpreter
 import com.mend.app.repository.ScheduleBuilder
 import com.mend.app.repository.StaticLayerRepository
 import com.mend.app.repository.SweepState
@@ -19,6 +20,8 @@ import com.mend.app.repository.WeightsRepository
 import com.mend.app.repository.detectInterrupt
 import com.mend.app.ui.components.ProposeDifferentState
 import com.mend.engine.adherence.detectElapsedMisses
+import com.mend.engine.alarms.interruptAlarm
+import com.mend.engine.alarms.planAlarms
 import com.mend.engine.allocation.DaySchedule
 import com.mend.engine.guilt.GuiltTrip
 import com.mend.engine.guilt.evaluateAllGuiltTrips
@@ -34,16 +37,19 @@ import com.mend.engine.recovery.SleepStopDecision
 import com.mend.engine.recovery.evaluateSleepStop
 import com.mend.engine.reshuffle.ReshuffleResponse
 import com.mend.engine.reshuffle.ScheduleInvalidatingEvent
+import com.mend.engine.time.TimeInterval
 import com.mend.engine.weights.ScheduleFeedback
 import com.mend.engine.weights.WeightAdjustment
-import com.mend.engine.time.TimeInterval
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -66,6 +72,7 @@ class TodayViewModel(
     private val adherence: AdherenceRepository,
     private val weights: WeightsRepository,
     private val interpreter: ProposalInterpreter,
+    private val alarms: AlarmCoordinator? = null,
     private val sweepState: SweepState? = null,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
@@ -194,6 +201,7 @@ class TodayViewModel(
     }
 
     init {
+        watchForScheduleChanges()
         watchForReshuffleTriggers()
         watchForElapsedMisses()
         sweepMissedDays()
@@ -260,6 +268,50 @@ class TodayViewModel(
             }
 
             state.lastSweptDate = instant.toLocalDate().minusDays(1)
+        }
+    }
+
+    /**
+     * Keeps the armed alarms matching the day on screen.
+     *
+     * It deliberately does **not** work out the alarms itself. The coordinator
+     * is the only thing that builds an alarm plan, because two components each
+     * applying their own plan spend their time cancelling one another's alarms
+     * — which is exactly what happened on a real device before this was moved.
+     * Here we only say that the shape of the day changed.
+     *
+     * The signature is what makes that affordable: the state flow re-emits for
+     * things alarms do not care about, such as a dismissed warning or an open
+     * dialog, and replanning on each of those would rebuild the day dozens of
+     * times an hour for no reason.
+     */
+    private fun watchForScheduleChanges() {
+        val coordinator = alarms ?: return
+        viewModelScope.launch {
+            state
+                .map { current -> current.alarmSignature() to current.interrupt }
+                .distinctUntilChanged()
+                .collectLatest { (_, interrupt) ->
+                    val instant = now()
+
+                    // An interrupt only qualifies for an alarm once it has been
+                    // given a time; one that could not claim a slot has nothing
+                    // to fire at.
+                    coordinator.setInterrupt(
+                        interrupt
+                            ?.takeIf { it.slot != null }
+                            ?.let { plan ->
+                                interruptAlarm(
+                                    taskId = plan.task.id,
+                                    taskTitle = plan.task.title,
+                                    at = maxOf(plan.slot!!.start, instant.plusMinutes(1)),
+                                    message = plan.message,
+                                )
+                            },
+                    )
+
+                    coordinator.replanToday(instant)
+                }
         }
     }
 
@@ -344,7 +396,6 @@ class TodayViewModel(
             goals.setSubTaskDone(
                 subTask = subTask,
                 done = true,
-                orderIndex = 0,
                 now = now(),
                 assignedSlot = assignedSlot,
             )
@@ -525,4 +576,21 @@ data class TodayUiState(
     val subTasksById: Map<String, SubTask> = emptyMap(),
     val bareLessonsById: Map<String, Lesson> = emptyMap(),
     val hasAnyInput: Boolean = false,
-)
+) {
+    /**
+     * Everything about this state that could change which alarms are wanted.
+     *
+     * The bedtime boundary and every placement's task and start time, and
+     * nothing else. Two states with the same signature want the same alarms, so
+     * the second one is not worth replanning for.
+     */
+    fun alarmSignature(): String = buildString {
+        append(sleepBlock?.let { "${it.bedtime}/${it.windDown}/${it.hardStop}" } ?: "-")
+        schedule?.placements?.forEach { placement ->
+            append('|')
+            append(placement.task.id)
+            append('@')
+            append(placement.slices.minByOrNull { it.start }?.start)
+        }
+    }
+}

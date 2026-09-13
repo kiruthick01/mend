@@ -74,7 +74,7 @@ class GoalsViewModel(
         viewModelScope.launch { repository.deleteSubTask(subTask) }
     }
 
-    fun setSubTaskDone(subTask: SubTask, done: Boolean, orderIndex: Int) {
+    fun setSubTaskDone(subTask: SubTask, done: Boolean, orderIndex: Int? = null) {
         viewModelScope.launch { repository.setSubTaskDone(subTask, done, orderIndex) }
     }
 

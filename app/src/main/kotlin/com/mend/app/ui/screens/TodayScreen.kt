@@ -71,6 +71,7 @@ fun TodayScreen() {
             adherence = app.adherenceRepository,
             weights = app.weightsRepository,
             interpreter = app.proposalInterpreter,
+            alarms = app.alarmCoordinator,
             sweepState = app.sweepState,
         )
     }

@@ -1,5 +1,6 @@
 package com.mend.app.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,8 +22,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mend.app.MendApplication
+import com.mend.app.alarms.AlarmScheduler
+import com.mend.app.alarms.ReliabilityStatus
+import com.mend.app.alarms.batteryOptimisationIntent
+import com.mend.app.alarms.notificationSettingsIntent
 import com.mend.app.ui.components.SleepEditorDialog
 import com.mend.app.ui.mendViewModel
 import kotlin.math.roundToInt
@@ -41,12 +50,34 @@ fun SettingsScreen() {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showEditor by remember { mutableStateOf(false) }
 
-    val app = LocalContext.current.applicationContext as MendApplication
+    val context = LocalContext.current
+    val app = context.applicationContext as MendApplication
     // Read directly rather than through a view model: these are two device-local
     // preferences with no derived state, and a flow for them would be ceremony.
     var hasKey by remember { mutableStateOf(app.aiSettings.hasApiKey) }
     var maskedKey by remember { mutableStateOf(app.aiSettings.maskedKey()) }
     var aiEnabled by remember { mutableStateOf(app.aiSettings.enabled) }
+
+    // Re-read whenever Settings is shown: every one of these can be changed
+    // outside the app, and a stale "all good" is worse than no check at all.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var reliability by remember {
+        mutableStateOf(ReliabilityStatus.of(app, AlarmScheduler(app)))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                reliability = ReliabilityStatus.of(app, AlarmScheduler(app))
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    fun launch(intent: Intent?) {
+        intent ?: return
+        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
@@ -112,6 +143,15 @@ fun SettingsScreen() {
             HorizontalDivider()
         }
 
+        ReliabilitySection(
+            status = reliability,
+            onFixNotifications = { launch(notificationSettingsIntent(app)) },
+            onFixExactAlarms = { launch(app.alarmCoordinator.exactAlarmSettingsIntent()) },
+            onFixBattery = { launch(batteryOptimisationIntent(app)) },
+            onOpenOemSettings = { launch(it) },
+        )
+        HorizontalDivider()
+
         AiSection(
             hasKey = hasKey,
             maskedKey = maskedKey,
@@ -136,7 +176,8 @@ fun SettingsScreen() {
         HorizontalDivider()
 
         Text(
-            text = "Alarms, notifications and widgets arrive in a later phase.",
+            text = "Add the Mend widget from your home screen's widget picker for " +
+                "what is happening now and what is next.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(20.dp),

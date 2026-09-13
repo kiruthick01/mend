@@ -4,4 +4,5 @@
     <string name="nav_today">Today</string>
     <string name="nav_tasks">Tasks</string>
     <string name="nav_settings">Settings</string>
+    <string name="widget_description">What you are meant to be doing now, and what is next.</string>
 </resources>

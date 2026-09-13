@@ -79,6 +79,16 @@ interface SubTaskDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(subTask: SubTaskEntity)
 
+    /**
+     * The position a sub-task already holds, or null when it is new.
+     *
+     * Needed because a sub-task is stored as a whole row: writing one back to
+     * record a tick would otherwise have to invent an order index, and any
+     * invented value silently reorders the lesson it belongs to.
+     */
+    @Query("SELECT order_index FROM sub_tasks WHERE id = :id")
+    suspend fun orderIndexOf(id: String): Int?
+
     /** Writes many at once, in one transaction. See [LessonDao.upsertAll]. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(subTasks: List<SubTaskEntity>)
