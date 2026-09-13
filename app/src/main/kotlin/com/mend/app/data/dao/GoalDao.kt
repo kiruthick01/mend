@@ -43,6 +43,16 @@ interface LessonDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(lesson: LessonEntity)
 
+    /**
+     * Writes many at once.
+     *
+     * Room runs a multi-row insert in a single transaction, so anything
+     * observing this table sees one emission rather than one per row - which
+     * matters because every emission rebuilds the whole day's schedule.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(lessons: List<LessonEntity>)
+
     @Update
     suspend fun update(lesson: LessonEntity)
 
@@ -68,6 +78,10 @@ interface SubTaskDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(subTask: SubTaskEntity)
+
+    /** Writes many at once, in one transaction. See [LessonDao.upsertAll]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(subTasks: List<SubTaskEntity>)
 
     @Update
     suspend fun update(subTask: SubTaskEntity)

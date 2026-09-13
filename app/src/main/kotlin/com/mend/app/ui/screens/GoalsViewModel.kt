@@ -10,6 +10,7 @@ import com.mend.engine.model.SubTask
 import com.mend.engine.progress.GoalProgress
 import com.mend.engine.progress.PaceSnapshot
 import com.mend.engine.progress.computeGoalProgress
+import com.mend.engine.progress.TrackSpec
 import com.mend.engine.progress.computePace
 import java.time.LocalDate
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,6 +47,11 @@ class GoalsViewModel(
 
     fun saveGoal(goal: Goal) {
         viewModelScope.launch { repository.saveGoal(goal) }
+    }
+
+    /** Creates a goal together with its whole track breakdown. */
+    fun createWithTracks(goal: Goal, tracks: List<TrackSpec>) {
+        viewModelScope.launch { repository.createTracks(goal, tracks) }
     }
 
     fun deleteGoal(goal: Goal) {

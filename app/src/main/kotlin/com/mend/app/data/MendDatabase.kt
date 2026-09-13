@@ -46,7 +46,7 @@ import com.mend.app.data.entity.TaskEntity
         WeightAdjustmentEntity::class,
         ScheduleFeedbackEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

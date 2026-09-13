@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mend.app.ui.components.GoalEditorDialog
 import com.mend.app.ui.components.HabitEditorDialog
 import com.mend.app.ui.components.StaticBlockEditorDialog
+import com.mend.app.ui.components.TrackSetupDialog
 import com.mend.app.ui.components.describeDays
 import com.mend.app.ui.mendViewModel
 import com.mend.engine.model.Goal
@@ -76,6 +77,8 @@ fun TasksScreen(onOpenGoal: (String) -> Unit = {}) {
     var showHabitEditor by remember { mutableStateOf(false) }
     var editingGoal by remember { mutableStateOf<Goal?>(null) }
     var showGoalEditor by remember { mutableStateOf(false) }
+    // A goal that has just been created and not yet broken down.
+    var awaitingTracks by remember { mutableStateOf<Goal?>(null) }
 
     Scaffold(
         // The top-level Scaffold in MendApp has already inset this screen for
@@ -173,9 +176,24 @@ fun TasksScreen(onOpenGoal: (String) -> Unit = {}) {
             existing = editingGoal,
             today = LocalDate.now(),
             onDismiss = { showGoalEditor = false },
-            onSave = {
-                goalsViewModel.saveGoal(it)
+            onSave = { goal ->
+                goalsViewModel.saveGoal(goal)
                 showGoalEditor = false
+                // Only offer the breakdown for a brand-new goal; an existing one
+                // already has whatever structure the user gave it.
+                if (editingGoal == null) awaitingTracks = goal
+            },
+        )
+    }
+
+    awaitingTracks?.let { goal ->
+        TrackSetupDialog(
+            goalTitle = goal.title,
+            onDismiss = { awaitingTracks = null },
+            onCreate = { tracks ->
+                goalsViewModel.createWithTracks(goal, tracks)
+                awaitingTracks = null
+                onOpenGoal(goal.id)
             },
         )
     }

@@ -80,6 +80,10 @@ data class GoalTask(
                     subTask.estimatedDuration.toMinutes().toInt(),
                 ),
                 flexibility = subTask.flexibility,
+                // Inherited from the goal: work confined to certain hours stays
+                // confined however it is broken up.
+                windowStart = goal.workWindowStart,
+                windowEnd = goal.workWindowEnd,
                 requiredDurationWithinWindow = subTask.estimatedDuration,
             ),
             goalId = goal.id,
@@ -110,6 +114,8 @@ data class GoalTask(
                     estimatedDuration.toMinutes().toInt(),
                 ),
                 flexibility = flexibility,
+                windowStart = goal.workWindowStart,
+                windowEnd = goal.workWindowEnd,
                 requiredDurationWithinWindow = estimatedDuration,
             ),
             goalId = goal.id,

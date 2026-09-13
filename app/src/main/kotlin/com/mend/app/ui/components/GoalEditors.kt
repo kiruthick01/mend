@@ -63,14 +63,28 @@ fun GoalEditorDialog(
     }
     var oneShot by remember { mutableStateOf(existing?.isOneShot ?: false) }
     var sequential by remember { mutableStateOf(existing?.isSequential ?: false) }
+    var confined by remember { mutableStateOf(existing?.hasWorkWindow ?: false) }
+    var windowStart by remember {
+        mutableStateOf(existing?.workWindowStart?.toDisplay() ?: "20:00")
+    }
+    var windowEnd by remember {
+        mutableStateOf(existing?.workWindowEnd?.toDisplay() ?: "22:00")
+    }
 
     val parsedDeadline = deadline.toLocalDateOrNull()
     val parsedTotal = totalLessons.toIntOrNull()
+
+    val parsedWindowStart = windowStart.toLocalTimeOrNull()
+    val parsedWindowEnd = windowEnd.toLocalTimeOrNull()
 
     val error: String? = when {
         title.isBlank() -> "Give the goal a name."
         parsedDeadline == null -> "Deadline must look like 2026-09-30."
         parsedTotal == null || parsedTotal < 0 -> "Lesson count must be zero or more."
+        confined && (parsedWindowStart == null || parsedWindowEnd == null) ->
+            "Window times must look like 20:00."
+        confined && parsedWindowEnd!! <= parsedWindowStart!! ->
+            "The window must end after it starts."
         else -> null
     }
 
@@ -118,6 +132,36 @@ fun GoalEditorDialog(
                     onCheckedChange = { oneShot = it },
                 )
                 SwitchRow(
+                    title = "Only at certain hours",
+                    body = "For work that only happens at a set time of day. Other " +
+                        "work can still take those hours if it is more urgent.",
+                    checked = confined,
+                    onCheckedChange = { confined = it },
+                )
+                if (confined) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = windowStart,
+                            onValueChange = { windowStart = it },
+                            label = { Text("From") },
+                            isError = parsedWindowStart == null,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                        )
+                        OutlinedTextField(
+                            value = windowEnd,
+                            onValueChange = { windowEnd = it },
+                            label = { Text("To") },
+                            isError = parsedWindowEnd == null,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
+                SwitchRow(
                     title = "Lessons must be done in order",
                     body = "Nothing downstream can start until the current lesson " +
                         "does. Only sequential work can negotiate a delay.",
@@ -150,6 +194,8 @@ fun GoalEditorDialog(
                             lessonsCompleted = 0,
                             pileupRisk = existing?.pileupRisk ?: false,
                             isSequential = sequential,
+                            workWindowStart = if (confined) parsedWindowStart else null,
+                            workWindowEnd = if (confined) parsedWindowEnd else null,
                             negotiatedDelayLimit = existing?.negotiatedDelayLimit,
                         ),
                     )

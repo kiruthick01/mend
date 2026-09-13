@@ -3,6 +3,7 @@ package com.mend.engine.model
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 /**
  * A body of work with a deadline: "finish Japanese N5", "clear the syllabus".
@@ -32,6 +33,20 @@ data class Goal(
     val isSequential: Boolean = false,
     /** Last-resort fallback, granted only to fragile work. Phase 4. */
     val negotiatedDelayLimit: Duration? = null,
+    /**
+     * Hours this goal's work may be scheduled between, if it is confined.
+     *
+     * For work that only happens at a particular time of day - project work in
+     * the evening, a study group at lunch. Null means it can go anywhere the
+     * day has room.
+     *
+     * This narrows *where* the work may be placed; it does not reserve the
+     * window. Higher-priority work is still free to take that time, which is
+     * what makes "project time gives way when exams are announced" fall out of
+     * the ordinary ranking rather than needing a rule of its own.
+     */
+    val workWindowStart: LocalTime? = null,
+    val workWindowEnd: LocalTime? = null,
 ) {
     init {
         require(manualImportance in IMPORTANCE_RANGE) {
@@ -41,7 +56,22 @@ data class Goal(
         require(lessonsCompleted in 0..maxOf(totalLessons, 0)) {
             "Goal '$title': lessonsCompleted ($lessonsCompleted) must be within 0..$totalLessons"
         }
+        if (workWindowStart != null || workWindowEnd != null) {
+            require(workWindowStart != null && workWindowEnd != null) {
+                "Goal '$title': a work window needs both a start and an end"
+            }
+            // Deliberately not supporting a window that wraps past midnight:
+            // work is already held back before bedtime, so a wrapping work
+            // window would only ever collide with protected sleep.
+            require(workWindowEnd > workWindowStart) {
+                "Goal '$title': work window end ($workWindowEnd) must be after " +
+                    "its start ($workWindowStart)"
+            }
+        }
     }
+
+    /** True when this goal's work is confined to certain hours. */
+    val hasWorkWindow: Boolean get() = workWindowStart != null && workWindowEnd != null
 
     /** 0.0-1.0 rollup of lesson completion. Zero-lesson goals report 0. */
     val completionFraction: Double

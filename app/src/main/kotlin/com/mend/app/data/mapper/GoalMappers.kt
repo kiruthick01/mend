@@ -29,6 +29,8 @@ fun GoalEntity.toDomain(lessonsCompleted: Int = 0): Goal = Goal(
     pileupRisk = pileupRisk,
     isSequential = isSequential,
     negotiatedDelayLimit = negotiatedDelayLimitMinutes?.let(Duration::ofMinutes),
+    workWindowStart = workWindowStart,
+    workWindowEnd = workWindowEnd,
 )
 
 fun Goal.toEntity(createdAt: Long = 0L): GoalEntity = GoalEntity(
@@ -42,6 +44,8 @@ fun Goal.toEntity(createdAt: Long = 0L): GoalEntity = GoalEntity(
     pileupRisk = pileupRisk,
     isSequential = isSequential,
     negotiatedDelayLimitMinutes = negotiatedDelayLimit?.toMinutes(),
+    workWindowStart = workWindowStart,
+    workWindowEnd = workWindowEnd,
     createdAt = createdAt,
 )
 

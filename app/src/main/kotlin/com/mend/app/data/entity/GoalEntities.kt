@@ -10,6 +10,7 @@ import com.mend.engine.model.Flexibility
 import com.mend.engine.model.ProgressStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 /** Persisted form of `Goal` (PROJECT_PLAN.md Section 3). */
 @Entity(tableName = "goals")
@@ -29,6 +30,9 @@ data class GoalEntity(
      */
     @ColumnInfo(name = "is_sequential") val isSequential: Boolean = false,
     @ColumnInfo(name = "negotiated_delay_limit_minutes") val negotiatedDelayLimitMinutes: Long? = null,
+    /** Hours this goal's work is confined to, if any. */
+    @ColumnInfo(name = "work_window_start") val workWindowStart: LocalTime? = null,
+    @ColumnInfo(name = "work_window_end") val workWindowEnd: LocalTime? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = 0L,
 )
 

@@ -9,12 +9,15 @@ import com.mend.engine.model.Goal
 import com.mend.engine.model.Lesson
 import com.mend.engine.model.ProgressStatus
 import com.mend.engine.model.SubTask
+import com.mend.engine.progress.TrackSpec
+import com.mend.engine.progress.generateTracks
 import com.mend.engine.reshuffle.ScheduleInvalidatingEvent
 import com.mend.engine.time.TimeInterval
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.UUID
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -104,6 +107,35 @@ class GoalRepository(
     suspend fun deleteGoal(goal: Goal) {
         // Lessons and sub-tasks cascade; the hierarchy is an ownership tree.
         goalDao.delete(goal.toEntity())
+    }
+
+    /**
+     * Creates a goal's whole breakdown in one go.
+     *
+     * For a goal made of parallel strands - grammar, vocab, reading, listening -
+     * where entering a hundred sub-tasks one dialog at a time is not a
+     * realistic thing to ask. What it writes is ordinary lessons and sub-tasks
+     * with nothing linking back, so all of it stays individually editable.
+     */
+    suspend fun createTracks(goal: Goal, tracks: List<TrackSpec>) {
+        val lessons = generateTracks(
+            goalId = goal.id,
+            tracks = tracks,
+            idFor = { UUID.randomUUID().toString() },
+        )
+
+        // The declared lesson count is the number of tracks, so the goal rollup
+        // reads against something real from the moment it is created.
+        saveGoal(goal.copy(totalLessons = lessons.size))
+
+        // Written in two bulk inserts rather than a hundred single ones: each
+        // individual write emits, and each emission rebuilds the whole day.
+        lessonDao.upsertAll(lessons.map { it.toEntity() })
+        subTaskDao.upsertAll(
+            lessons.flatMap { lesson ->
+                lesson.subTasks.mapIndexed { index, subTask -> subTask.toEntity(index) }
+            },
+        )
     }
 
     suspend fun saveLesson(lesson: Lesson) {
