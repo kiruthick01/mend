@@ -68,14 +68,18 @@ fun StaticBlockEditorDialog(
         title.isBlank() -> "Give the block a name."
         parsedStart == null -> "Start time must look like 09:00."
         parsedEnd == null -> "End time must look like 16:00."
-        parsedEnd <= parsedStart -> "End time must be after the start time."
+        parsedEnd == parsedStart -> "Start and end cannot be the same time."
         days.isEmpty() -> "Pick at least one day."
         partialWindow && (parsedRequired == null || parsedRequired <= 0) ->
             "Required minutes must be a positive number."
-        partialWindow && parsedRequired!! > Duration.between(parsedStart, parsedEnd).toMinutes() ->
+        partialWindow && parsedRequired!! > windowMinutes(parsedStart, parsedEnd) ->
             "Required minutes cannot exceed the window itself."
         else -> null
     }
+
+    // An end earlier than the start means the block runs past midnight, which
+    // is a normal thing for a late shift or a 22:00 gym - not a mistake.
+    val overnight = parsedStart != null && parsedEnd != null && parsedEnd < parsedStart
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -105,6 +109,17 @@ fun StaticBlockEditorDialog(
                         onValueChange = { end = it },
                         label = "Window closes",
                         modifier = Modifier.weight(1f),
+                    )
+                }
+
+                if (overnight) {
+                    Text(
+                        text = "This runs overnight, ending at $end the next morning. " +
+                            "If you are setting up sleep, use Protected sleep in " +
+                            "Settings instead — it also holds work back before bedtime " +
+                            "and tracks how well the boundary holds.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
@@ -327,3 +342,19 @@ private fun DayPicker(selected: Set<DayOfWeek>, onChange: (Set<DayOfWeek>) -> Un
         }
     }
 }
+
+/**
+ * Length of a window, counting one that wraps past midnight.
+ *
+ * Mirrors `StaticBlock.windowDuration` so the editor rejects exactly what the
+ * domain type would have rejected, rather than guessing at it.
+ */
+private fun windowMinutes(from: LocalTime, to: LocalTime): Long =
+    if (to < from) {
+        Duration.ofDays(1)
+            .minus(Duration.between(LocalTime.MIDNIGHT, from))
+            .plus(Duration.between(LocalTime.MIDNIGHT, to))
+            .toMinutes()
+    } else {
+        Duration.between(from, to).toMinutes()
+    }

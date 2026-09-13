@@ -1,7 +1,10 @@
 package com.mend.engine.model
 
 import java.time.DayOfWeek
+import com.mend.engine.time.TimeInterval
 import java.time.Duration
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 /**
@@ -59,6 +62,12 @@ enum class WindowAnchor {
  *    that much time somewhere inside the window — a 2-hour gym window that
  *    only needs 45 minutes of you. The remainder of the window stays free.
  *
+ * A window may run past midnight — a late shift, a 22:00 gym, a class that
+ * finishes after twelve. Such a block shows up twice on a single calendar day:
+ * the tail of the one that began yesterday, and the head of the one beginning
+ * today. That is genuinely what the day looks like, and collapsing it would
+ * hide half the committed time.
+ *
  * Deliberately not a [Schedulable]: static blocks are never ranked, never
  * scored, and never bin-packed.
  */
@@ -76,8 +85,8 @@ data class StaticBlock(
     override val type: TaskType = TaskType.STATIC_BLOCK
 
     init {
-        require(windowEnd > windowStart) {
-            "Static block '$title': windowEnd ($windowEnd) must be after windowStart ($windowStart)"
+        require(windowEnd != windowStart) {
+            "Static block '$title': windowEnd and windowStart must differ ($windowStart)"
         }
         requiredDuration?.let {
             require(!it.isNegative && !it.isZero) {
@@ -89,8 +98,18 @@ data class StaticBlock(
         }
     }
 
+    /** True when the window runs through midnight into the next day. */
+    val crossesMidnight: Boolean get() = windowEnd < windowStart
+
     val windowDuration: Duration
-        get() = Duration.between(windowStart, windowEnd)
+        get() = if (crossesMidnight) {
+            // Time left in the evening, plus time taken out of the morning.
+            Duration.ofDays(1)
+                .minus(Duration.between(LocalTime.MIDNIGHT, windowStart))
+                .plus(Duration.between(LocalTime.MIDNIGHT, windowEnd))
+        } else {
+            Duration.between(windowStart, windowEnd)
+        }
 
     /** How long this block actually occupies: its requirement, else the window. */
     val occupiedDuration: Duration
@@ -99,6 +118,64 @@ data class StaticBlock(
     /** True when the block leaves usable time inside its own window. */
     val isPartialWindow: Boolean
         get() = requiredDuration != null && requiredDuration < windowDuration
+
+    /**
+     * The spans this block actually occupies on [date].
+     *
+     * One interval normally. Two when the window crosses midnight, because on
+     * any given day both last night's tail and tonight's head are real,
+     * committed time.
+     *
+     * Day-of-week is checked against the day each occurrence *started*, so a
+     * Monday-only 23:00-05:15 block occupies Monday evening and Tuesday
+     * morning — which is what "Monday night" means to a person.
+     */
+    fun intervalsOn(date: LocalDate): List<TimeInterval> {
+        if (!crossesMidnight) {
+            return if (appliesOn(date.dayOfWeek)) {
+                listOf(occupiedSpan(date.atTime(windowStart), date.atTime(windowEnd)))
+            } else {
+                emptyList()
+            }
+        }
+
+        return buildList {
+            // The occurrence that began yesterday and runs into this morning.
+            if (appliesOn(date.minusDays(1).dayOfWeek)) {
+                add(
+                    occupiedSpan(
+                        date.minusDays(1).atTime(windowStart),
+                        date.atTime(windowEnd),
+                    ),
+                )
+            }
+            // The one beginning tonight, which runs on into tomorrow.
+            if (appliesOn(date.dayOfWeek)) {
+                add(
+                    occupiedSpan(
+                        date.atTime(windowStart),
+                        date.plusDays(1).atTime(windowEnd),
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * Where inside one occurrence of the window this block actually sits.
+     *
+     * The whole span when it needs all of it; otherwise its required duration,
+     * anchored to whichever end was chosen.
+     */
+    private fun occupiedSpan(from: LocalDateTime, to: LocalDateTime): TimeInterval =
+        if (!isPartialWindow) {
+            TimeInterval(from, to)
+        } else {
+            when (anchor) {
+                WindowAnchor.EARLIEST -> TimeInterval(from, from.plus(occupiedDuration))
+                WindowAnchor.LATEST -> TimeInterval(to.minus(occupiedDuration), to)
+            }
+        }
 
     companion object {
         val ALL_DAYS: Set<DayOfWeek> = DayOfWeek.entries.toSet()

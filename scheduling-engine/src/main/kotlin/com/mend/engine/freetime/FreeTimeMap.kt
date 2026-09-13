@@ -49,6 +49,8 @@ data class EntryPlacement(
  *  1. The day runs from [dayStart] to [dayEnd] (00:00 to 24:00 by default).
  *  2. Only entries whose `daysOfWeek` include this date's weekday apply.
  *  3. A **static block** with no `requiredDuration` occupies its whole window.
+ *     A window that runs past midnight appears twice on one calendar day: the
+ *     tail of yesterday's occurrence and the head of today's.
  *  4. A **static block** with a `requiredDuration` shorter than its window —
  *     a 2-hour gym window that needs 45 minutes — occupies only that much,
  *     anchored to the [WindowAnchor.EARLIEST] or [WindowAnchor.LATEST] end of
@@ -90,9 +92,8 @@ fun computeFreeTimeMap(
 
     val placements = buildList {
         staticBlocks
-            .filter { it.appliesOn(weekday) }
             .sortedBy { it.windowStart }
-            .forEach { block -> placeStaticBlock(block, date, bounds)?.let { add(it) } }
+            .forEach { block -> addAll(placeStaticBlock(block, date, bounds)) }
 
         habits
             .filter { it.appliesOn(weekday) }
@@ -121,38 +122,34 @@ private fun placeStaticBlock(
     block: StaticBlock,
     date: LocalDate,
     bounds: TimeInterval,
-): EntryPlacement? {
-    val windowStart = date.atTime(block.windowStart)
-    val windowEnd = date.atTime(block.windowEnd)
-
-    val interval = if (!block.isPartialWindow) {
-        TimeInterval(windowStart, windowEnd)
-    } else {
-        val needed = block.occupiedDuration
-        when (block.anchor) {
-            WindowAnchor.EARLIEST -> TimeInterval(windowStart, windowStart.plus(needed))
-            WindowAnchor.LATEST -> TimeInterval(windowEnd.minus(needed), windowEnd)
+): List<EntryPlacement> =
+    block.intervalsOn(date).mapNotNull { interval ->
+        interval.intersect(bounds)?.let { clipped ->
+            EntryPlacement(
+                entry = block,
+                interval = clipped,
+                reason = describePlacement(block),
+            )
         }
     }
 
-    val clipped = interval.intersect(bounds) ?: return null
+private fun describePlacement(block: StaticBlock): String {
+    val window = "${block.windowStart}-${block.windowEnd}" +
+        if (block.crossesMidnight) " (overnight)" else ""
 
-    val reason = when {
-        !block.isPartialWindow ->
-            "static block occupies its full window ${block.windowStart}-${block.windowEnd}"
+    return when {
+        !block.isPartialWindow -> "static block occupies its full window $window"
+
         block.anchor == WindowAnchor.EARLIEST ->
             "static block needs ${block.occupiedDuration.toMinutes()}m of the " +
-                "${block.windowDuration.toMinutes()}m window " +
-                "${block.windowStart}-${block.windowEnd}; anchored to the start, " +
-                "remainder of the window left free"
+                "${block.windowDuration.toMinutes()}m window $window; anchored to " +
+                "the start, remainder of the window left free"
+
         else ->
             "static block needs ${block.occupiedDuration.toMinutes()}m of the " +
-                "${block.windowDuration.toMinutes()}m window " +
-                "${block.windowStart}-${block.windowEnd}; anchored to the end, " +
-                "remainder of the window left free"
+                "${block.windowDuration.toMinutes()}m window $window; anchored to " +
+                "the end, remainder of the window left free"
     }
-
-    return EntryPlacement(entry = block, interval = clipped, reason = reason)
 }
 
 private fun placeHabit(
