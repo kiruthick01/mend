@@ -81,7 +81,7 @@ Questions 9-11 are new in Phase 4, 12-13 in Phase 5, 14-15 in Phase 7 and
 is a correction to Phase 7 found on 14 September and is the most important thing
 in this list after question 9.**
 
-### 18. The prose input parses your words and then discards them
+### 18. The prose input parses your words and then discards them — **RESOLVED, option 2**
 
 Found while answering a question about whether the API key was worth funding,
 which is a humbling way to find it.
@@ -106,14 +106,34 @@ happen. The row was accurate and misleading at once, which is the kind of
 checklist entry this log exists to avoid, so it has been corrected in place
 rather than quietly amended.
 
-**Two ways out, your call:** wire the three constraint types through to real
-repository writes (a busy period and an avoid-window both become static blocks;
-a deadline change becomes a goal edit), or remove the Accept button from the
-interpretation screen so it can only ever save your words and point you at
-Tasks. The second is one afternoon smaller and is honest; the first is what the
-feature was supposed to be. Until one of them happens, **do not trust the
-confirmation screen** — an API key makes this path look convincing without
-making it work.
+**Resolved on 14 September: you chose option 2.** The "Use this" button is
+gone. The dialog now has exactly one commit action, `Save what I wrote`, on both
+the understood and the no-AI paths — because saving the words is the only thing
+either path can honestly do.
+
+The interpretation itself stays, and earns its place better than it did: it
+shows what Mend understood, shows the engine's validation warnings, and then
+**names the change to go and make**, in the vocabulary of the screen that makes
+it —
+
+- a busy period → "add a fixed block called *exams* in Tasks, covering
+  2026-09-20 to 2026-09-25."
+- an avoid window → "add a fixed block called *gym* in Tasks on Tuesday,
+  Thursday, from 18:00 to 19:30."
+- a deadline change → "open *JLPT N4* in Tasks and set its deadline to
+  2026-12-01."
+
+So the feature is now a translator rather than a pretend actuator. It turns a
+sentence into a specific instruction you can carry out in about ten seconds,
+and it no longer claims to have done anything it did not do.
+
+`acceptInterpretedConstraint()` was deleted rather than left unused, so nothing
+can call it back into existence by accident.
+
+**Option 1 remains available** if you later want the constraints written
+directly — the parser, the four constraint shapes and the engine's validation
+are all still there and tested, and only the write-through is missing. It is a
+Phase 9-or-later decision, not a regression.
 
 ### 1. Was installing a toolchain on this machine acceptable?
 

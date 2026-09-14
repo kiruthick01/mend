@@ -139,7 +139,6 @@ fun TodayScreen() {
                 state = propose,
                 onTextChange = viewModel::updateProposeText,
                 onInterpret = viewModel::interpretProposeDifferent,
-                onAccept = viewModel::acceptInterpretedConstraint,
                 onSaveVerbatim = viewModel::saveProposeVerbatim,
                 onDismiss = viewModel::dismissProposeDifferent,
             )

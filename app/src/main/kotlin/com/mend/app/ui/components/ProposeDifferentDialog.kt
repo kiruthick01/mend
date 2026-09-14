@@ -22,24 +22,34 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mend.app.repository.ProposalInterpreter
+import com.mend.engine.nlp.StructuredConstraint
 
 /**
  * "I would rather you did something else."
  *
- * The flow is deliberately three steps and not two: write it, **see what Mend
- * understood**, then decide. The middle step is not politeness — it is where a
- * misread turns into a corrected sentence instead of a changed schedule.
+ * Write it, see what Mend made of it, then go and make the change.
  *
- * If there is no AI available the text box is still there and still saves what
- * was written, because losing the user's own words would be worse than not
- * acting on them yet.
+ * That last part is deliberate and it is a step back from what this screen used
+ * to claim. Reading prose and *applying* it are two different jobs, and only
+ * the first is built: a parsed constraint is never written anywhere, so a
+ * button that said "Use this" produced a confirmation, a replan against
+ * unchanged data, and no actual change. A screen that says it understood you
+ * and then quietly does nothing is worse than one that admits the limit.
+ *
+ * So the interpretation stays — it is genuinely useful, it is validated by the
+ * engine, and it tells you in Mend's own vocabulary what you would need to set
+ * up — but the only thing this dialog commits is your words, kept against the
+ * proposal. The change itself is made in Tasks, where it actually takes effect.
+ *
+ * If there is no AI available the text box behaves identically, minus the
+ * translation. Losing the user's own words would be worse than not reading
+ * them.
  */
 @Composable
 fun ProposeDifferentDialog(
     state: ProposeDifferentState,
     onTextChange: (String) -> Unit,
     onInterpret: () -> Unit,
-    onAccept: () -> Unit,
     onSaveVerbatim: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -93,8 +103,13 @@ fun ProposeDifferentDialog(
                             )
                         }
                         Text(
-                            text = "Accepting this only asks for a new plan for " +
-                                "tomorrow. You will still get to accept or decline it.",
+                            text = "Mend cannot make this change for you yet. To do " +
+                                "it: " + howToApply(outcome.constraint),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = "Saving keeps your words against this proposal so " +
+                                "the reason is on record either way.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -137,11 +152,11 @@ fun ProposeDifferentDialog(
         },
         confirmButton = {
             when (state.outcome) {
-                is ProposalInterpreter.Outcome.Understood -> TextButton(onClick = onAccept) {
-                    Text("Use this")
-                }
-
-                is ProposalInterpreter.Outcome.NeedsManualEntry -> TextButton(
+                // Understood and NeedsManualEntry now do the same thing, because
+                // the same thing is all either of them can honestly do.
+                is ProposalInterpreter.Outcome.Understood,
+                is ProposalInterpreter.Outcome.NeedsManualEntry,
+                -> TextButton(
                     onClick = onSaveVerbatim,
                     enabled = state.text.isNotBlank(),
                 ) { Text("Save what I wrote") }
@@ -154,6 +169,33 @@ fun ProposeDifferentDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * What the user has to do by hand, in the vocabulary of the screen that does it.
+ *
+ * This is the honest replacement for the button that used to claim it would
+ * apply the change itself. Naming the exact thing to create is the difference
+ * between a translation that helps and one that only proves the parser ran.
+ */
+private fun howToApply(constraint: StructuredConstraint): String = when (constraint) {
+    is StructuredConstraint.BusyPeriod ->
+        "add a fixed block called \"${constraint.label}\" in Tasks, covering " +
+            "${constraint.from} to ${constraint.to}."
+
+    is StructuredConstraint.AvoidWindow ->
+        "add a fixed block called \"${constraint.label}\" in Tasks on " +
+            constraint.daysOfWeek.joinToString(", ") {
+                it.name.lowercase().replaceFirstChar(Char::uppercase)
+            } +
+            ", from ${constraint.from} to ${constraint.to}."
+
+    is StructuredConstraint.DeadlineChange ->
+        "open \"${constraint.goalTitleHint}\" in Tasks and set its deadline to " +
+            "${constraint.newDeadline}."
+
+    // Filtered out before this screen is reached; handled so the when is total.
+    is StructuredConstraint.Unrecognised -> "describe it again, more specifically."
 }
 
 @Composable

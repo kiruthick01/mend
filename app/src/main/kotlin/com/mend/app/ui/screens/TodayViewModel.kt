@@ -489,35 +489,18 @@ class TodayViewModel(
     }
 
     /**
-     * Accepts an understood constraint.
+     * Stores the words verbatim, which is the only thing this flow commits.
      *
-     * Even here the AI applies nothing: this records the user's own words
-     * against the proposal and raises an ordinary schedule-invalidating event,
-     * so the next plan arrives through the same Accept / Decline / Propose
-     * different flow as every other change.
+     * There used to be a second path that "accepted" an understood constraint.
+     * It recorded a [ScheduleInvalidatingEvent.ManualEdit] carrying a summary
+     * string and nothing else — no repository ever saw the parsed constraint —
+     * so the replan it triggered read unchanged data and the described change
+     * simply did not happen. It was removed rather than left looking capable.
+     *
+     * Reading the prose still earns its place: the interpretation is shown so
+     * the user can see it was understood, and the dialog names the change to
+     * make in Tasks. Applying it is the piece that is not built.
      */
-    fun acceptInterpretedConstraint() {
-        val current = proposeDifferent.value ?: return
-        val understood = current.outcome as? ProposalInterpreter.Outcome.Understood ?: return
-
-        viewModelScope.launch {
-            reshuffle.respond(
-                current.proposalId,
-                ReshuffleResponse.ProposeDifferent(current.text),
-                now(),
-            )
-            reshuffle.record(
-                ScheduleInvalidatingEvent.ManualEdit(
-                    occurredAt = now(),
-                    summary = understood.summary,
-                ),
-            )
-            proposeDifferent.value = null
-            askForFeedback(current.proposalId)
-        }
-    }
-
-    /** Stores the words verbatim when nothing could read them. */
     fun saveProposeVerbatim() {
         val current = proposeDifferent.value ?: return
         viewModelScope.launch {
