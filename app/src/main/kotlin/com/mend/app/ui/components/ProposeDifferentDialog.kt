@@ -178,7 +178,7 @@ fun ProposeDifferentDialog(
  * apply the change itself. Naming the exact thing to create is the difference
  * between a translation that helps and one that only proves the parser ran.
  */
-private fun howToApply(constraint: StructuredConstraint): String = when (constraint) {
+internal fun howToApply(constraint: StructuredConstraint): String = when (constraint) {
     is StructuredConstraint.BusyPeriod ->
         "add a fixed block called \"${constraint.label}\" in Tasks, covering " +
             "${constraint.from} to ${constraint.to}."

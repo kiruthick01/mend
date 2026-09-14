@@ -18,6 +18,20 @@ import androidx.compose.ui.unit.dp
 import com.mend.engine.reshuffle.ReshuffleResponse
 
 /**
+ * How many individual moves the card will spell out before summarising.
+ *
+ * It has to be capped, and not only for readability. Today lays its banners out
+ * in a plain column that does not scroll, so an uncapped list grows the card
+ * until it pushes its own Accept / Decline / Propose different buttons off the
+ * bottom of the screen — at which point the proposal cannot be answered at all.
+ * Seen with a goal of ~100 sub-tasks, where the card listed 66 moves.
+ *
+ * Six is enough to show what kind of change this is. The rest of the answer is
+ * the schedule itself, which is on the same screen, just below.
+ */
+private const val MAX_LISTED_CHANGES = 6
+
+/**
  * A proposed change to tomorrow, with exactly three answers.
  *
  * Three, and only three, is the whole point: PROJECT_PLAN.md makes every
@@ -59,10 +73,18 @@ fun ReshuffleProposalCard(
                 )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    changes.forEach { change ->
+                    changes.take(MAX_LISTED_CHANGES).forEach { change ->
                         Text(
                             text = "• $change",
                             style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    val hidden = changes.size - MAX_LISTED_CHANGES
+                    if (hidden > 0) {
+                        Text(
+                            text = "…and $hidden more. The whole day is below.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

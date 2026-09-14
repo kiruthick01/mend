@@ -28,7 +28,11 @@ class OfflineAiBridge(
         context: ParseContext,
     ): AiResult<StructuredConstraint> = AiResult.Unavailable(
         reason = reason,
-        detail = "Type the change in the form instead.",
+        // Deliberately no detail. The dialog already says where to make the
+        // change, and this used to add "type the change in the form instead",
+        // which contradicted it and pointed at a form that does not exist —
+        // editing is done in Tasks, on the same screens that created the thing.
+        detail = null,
     )
 
     /**

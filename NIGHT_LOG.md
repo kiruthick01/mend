@@ -135,6 +135,36 @@ directly — the parser, the four constraint shapes and the engine's validation
 are all still there and tested, and only the write-through is missing. It is a
 Phase 9-or-later decision, not a regression.
 
+`howToApply` is covered by four tests in `HowToApplyTest`, because that string
+is now the whole feature rather than a label on it: if it names the wrong dates,
+the wrong goal or the wrong screen, the user follows it, gets a schedule that
+does not match what they asked for, and blames the app — correctly.
+
+#### Two further defects found while verifying this on a device
+
+**The proposal card could make itself unanswerable.** Today lays its banners out
+in a plain `Column` that does not scroll, and the card listed **every** change
+in the proposed plan. With the ~100-sub-task Japanese goal that was 53 lines,
+which grew the card until Accept, Decline and Propose different were all pushed
+off the bottom of the screen — with no way to scroll to them. The proposal
+simply could not be answered.
+
+Capped at six changes plus "…and 47 more. The whole day is below." The card's
+job is to say what kind of change this is; the schedule itself is on the same
+screen, immediately underneath.
+
+**The no-key message contradicted itself.** It said "you can make the change by
+hand in Tasks" and then, on the next line, "(Type the change in the form
+instead.)" — pointing at a form that does not exist and never did, per question
+14. The stray detail string is gone.
+
+**Still open, and now on the Phase 9 list:** that outer `Column` on Today still
+does not scroll. The cap fixes the case that was actually breaking, but a
+sleep banner, an interrupt banner, a weight-change notice, a feedback prompt and
+two guilt trips stacked at once could in principle do the same thing again. The
+honest fix is to make that whole region scrollable rather than to keep capping
+its contents one card at a time.
+
 ### 1. Was installing a toolchain on this machine acceptable?
 
 I could not run a build or a test without one, and the per-phase process
