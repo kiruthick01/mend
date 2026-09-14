@@ -27,8 +27,13 @@ import androidx.compose.ui.unit.dp
  *
  * Worded so that switching it off does not read like losing a feature, because
  * it mostly is not one: the schedule, the warnings and the proposals are all
- * produced without it. What the key buys is the ability to type a change in
- * prose instead of filling in a form, and slightly better-written copy.
+ * produced without it. What the key buys is exactly one thing — the ability to
+ * type a change in prose instead of filling in a form.
+ *
+ * It used to claim it also wrote better explanations. It does not: the generator
+ * exists and is tested, but nothing calls it, and the cards still render the
+ * engine's templated text. Describing a feature the app does not have is worse
+ * than not having it, so the claim is gone until the wiring is.
  */
 @Composable
 fun AiSection(
@@ -57,8 +62,8 @@ fun AiSection(
                 )
                 Text(
                     text = "Lets you describe a change in your own words instead of " +
-                        "filling in a form, and writes explanations a little better. " +
-                        "Everything else works exactly the same without it.",
+                        "filling in a form. Everything else works exactly the same " +
+                        "without it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

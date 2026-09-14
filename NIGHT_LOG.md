@@ -71,14 +71,49 @@ question 1 under "Needs your input".**
 
 ## Needs your input
 
-Fifteen open questions, most-consequential first. Most are places where the
+Eighteen open questions, most-consequential first. Most are places where the
 plan did not answer something I needed, so I picked a defensible default,
 implemented it behind a named constant or a field, and wrote it down here
 rather than letting it pass silently.
 
 Questions 9-11 are new in Phase 4, 12-13 in Phase 5, 14-15 in Phase 7 and
-16-17 in Phase 8; each is recorded in that phase's section below. Question 9 in
-particular is worth reading first.
+16-17 in Phase 8; each is recorded in that phase's section below. **Question 18
+is a correction to Phase 7 found on 14 September and is the most important thing
+in this list after question 9.**
+
+### 18. The prose input parses your words and then discards them
+
+Found while answering a question about whether the API key was worth funding,
+which is a humbling way to find it.
+
+`ProposeDifferent` → type prose → the parser returns a `BusyPeriod`,
+`AvoidWindow` or `DeadlineChange` → the engine validates it → you are shown
+"Treat 2026-09-20 to 2026-09-25 as mostly taken up by exams" → you press
+Accept → **nothing is written**. `acceptInterpretedConstraint()` records a
+`ScheduleInvalidatingEvent.ManualEdit`, whose entire payload is `occurredAt`
+and a `summary` string. The replan it triggers runs against unchanged inputs.
+
+Confirmed structurally: `BusyPeriod`, `AvoidWindow` and `DeadlineChange` appear
+in exactly one place in the app module — `AnthropicAiBridge`, where the API
+response is parsed into them — and are consumed nowhere.
+
+This is worse than a missing feature, because it **looks** like it worked. The
+offline path, by contrast, is correct: it saves the words verbatim and directs
+you to Tasks, where making the change by hand genuinely reschedules.
+
+My Phase 7 checklist said 7.7 PASS. The flow does run; the effect does not
+happen. The row was accurate and misleading at once, which is the kind of
+checklist entry this log exists to avoid, so it has been corrected in place
+rather than quietly amended.
+
+**Two ways out, your call:** wire the three constraint types through to real
+repository writes (a busy period and an avoid-window both become static blocks;
+a deadline change becomes a goal edit), or remove the Accept button from the
+interpretation screen so it can only ever save your words and point you at
+Tasks. The second is one afternoon smaller and is honest; the first is what the
+feature was supposed to be. Until one of them happens, **do not trust the
+confirmation screen** — an API key makes this path look convincing without
+making it work.
 
 ### 1. Was installing a toolchain on this machine acceptable?
 
@@ -1195,7 +1230,7 @@ lessons too and offers "Done" for them.
 | 7.4 | Uses the Anthropic API | **PASS** | `AnthropicClient` — Messages API, `claude-opus-5`, `anthropic-version: 2023-06-01`, `output_config.effort: low` |
 | 7.5 | "Propose Different" wired through parsing | **PASS** | The card hands off to a three-step flow: write it → see what Mend understood → decide |
 | 7.6 | Result validated by the deterministic engine | **PASS** | `validateConstraint` runs **before** anything reaches the screen, not before it is applied |
-| 7.7 | Still goes through the normal accept/decline flow | **PASS** | Accepting an interpretation raises an ordinary `ManualEdit` event; the plan that follows arrives with the same three buttons as any other |
+| 7.7 | Still goes through the normal accept/decline flow | **PASS on the flow, FAIL on the effect — corrected 14 Sep, see question 18** | Accepting an interpretation raises an ordinary `ManualEdit` event and the plan that follows arrives with the same three buttons. But the parsed constraint is **never applied**: `ManualEdit` carries only a timestamp and a display string, and the replan runs against unchanged inputs |
 | 7.8 | The AI never applies a change directly | **PASS** | Nothing in the AI package can reach a repository. The bridge returns a value; the engine judges it; the user decides |
 | 7.9 | Graceful offline degradation | **PASS** | Verified on device with no key: "No API key is set, so Mend cannot read prose. What you wrote will be saved as-is…" with a **Save what I wrote** button |
 | 7.10 | Manual structured-input form fallback | **PASS** — with a caveat | The words are preserved verbatim and the user is directed to make the change by hand in Tasks, which already has full create/edit UI for every constraint type. There is no separate duplicate form; see "Decisions" |
