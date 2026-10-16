@@ -10,33 +10,54 @@ timeline, and goal work is packed into whatever free time is genuinely left.
 When reality changes, the app proposes a new plan and asks; it never silently
 rewrites your day.
 
+## What it does
+
+- **A real timetable.** Fixed blocks (college, mess, gym) and habits carve out
+  the day, and goal work is packed into the time that is genuinely left.
+- **Negotiated changes.** When reality shifts, Mend proposes a new plan and
+  asks. It never rewrites your day silently.
+- **Protected sleep** with a configurable hard stop, emergency interrupts for
+  one-shot deadlines, and a deadline-projection warning.
+- **Adherence tracking** that feeds bounded, inspectable weight adjustments.
+- **Alarms, notifications, a home-screen widget and a lock-screen note**, so the
+  schedule reaches you without opening the app.
+- **Connected apps** (see below): practice in Duolingo or AnkiDroid ticks off
+  the matching goal and shapes the schedule.
+- **An optional AI layer**: language in, phrasing out. Fully usable without it.
+
+### Connected apps
+
+Link a goal to Duolingo or an AnkiDroid deck in Settings. Everything here is
+optional and degrades to nothing when the apps are absent.
+
+| Source | How it is read | Notes |
+| --- | --- | --- |
+| AnkiDroid | Its public ContentProvider API | Needs AnkiDroid installed and its API permission granted. Reading a deck selects it inside AnkiDroid briefly; the previous selection is restored. |
+| Duolingo (username) | The public profile endpoint the website uses | **Unofficial.** Not a documented API, it can change without notice, and it may not suit Duolingo's terms. A failed read shows as "unknown", never as a missed day. |
+| Either app (no username or deck) | Android usage history | Counts time in the app. Needs Usage access, granted by hand in system Settings. |
+
+What the readings do:
+
+- **Tick off work.** When practice is detected, the goal's next pending item is
+  completed through the normal path, against the slot it was scheduled in, so
+  lateness is real. One item per link per day.
+- **Size the work.** Anki cards due set the review task's length (8 seconds a
+  card). Without Anki, the median of your real minutes does.
+- **Guard streaks.** From 20:00, a run of practice about to break raises the
+  goal's priority and sends one notification, never inside protected sleep.
+- **Show it.** Today, the widget and goal detail show streak, cards due and
+  minutes. Mend can suggest a work window from the hours you actually use an app.
+
+Anki and usage readings stay on the device. The one thing sent out is the
+Duolingo username, to Duolingo (and, if you add a key, the text you type to the
+AI layer goes to Anthropic).
+
 ## Current phase
 
-**Phase 7 — The AI layer.** An optional, deliberately narrow Anthropic
-integration: language in, phrasing out. It can produce four shapes of
-constraint and nothing else, the deterministic engine validates every one
-before it reaches the screen, and the app is fully usable with no key and no
-network.
-
-Done so far:
-
-- **Phase 0** — module boundaries, build, navigation shell, test harness.
-- **Phase 1** — the Section 3 data model in Room, static blocks and habits, and
-  the free time map.
-- **Phase 2** — goals broken into lessons and per-lesson sub-tasks, with
-  progress rollup and a pace view.
-- **Phase 3** — priority scoring, greedy slot allocation, and a Today screen
-  showing the full computed day.
-- **Phase 4** — negotiated reshuffling, emergency interrupts, protected sleep
-  with a configurable hard stop, and the delay-negotiation tier.
-- **Phase 5** — app-wide adherence logging, rolling adherence and delay
-  statistics, and the deadline-projection warning.
-- **Phase 6** — the feedback prompt, bounded rule-based weight adjustment, and
-  a Settings screen showing the weights and every change made to them.
-- **Phase 7** — natural-language parsing into engine-validated constraints,
-  generated explanation copy, and full offline degradation.
-
-Not yet built: alarms, notifications and widgets.
+Phases 0 to 8 are done: engine, data model, goals, scheduling, reshuffling,
+adherence, weight tuning, the AI layer, and alarms and widgets. Connected apps
+are an addition on top, tested on a real device. Phase 9 (hardening and a
+first release) is next.
 
 The full phase plan lives in [PROJECT_PLAN.md](PROJECT_PLAN.md).
 
@@ -131,4 +152,6 @@ Then:
 
 ## Status
 
-Pre-release and under active development. Not yet usable.
+Pre-release and under active development. It runs on a real phone and is used
+daily by its author, but it has not been hardened for other people yet: expect
+rough edges, no migration guarantees between versions, and no Play Store build.
