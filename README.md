@@ -155,3 +155,11 @@ Then:
 Pre-release and under active development. It runs on a real phone and is used
 daily by its author, but it has not been hardened for other people yet: expect
 rough edges, no migration guarantees between versions, and no Play Store build.
+
+## Roadmap
+
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the phase plan and [PRODUCTION_PLAN.md](PRODUCTION_PLAN.md) for what a Play Store release needs.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
