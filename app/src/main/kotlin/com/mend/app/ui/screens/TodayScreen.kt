@@ -85,6 +85,8 @@ fun TodayScreen() {
 
         state.sleepStop?.let { SleepBanner(it) }
 
+        ProgressStrip()
+
         state.lastAdjustmentReason?.let { reason ->
             WeightChangeNotice(
                 reason = reason,

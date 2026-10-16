@@ -168,6 +168,9 @@ fun SettingsScreen() {
         )
         HorizontalDivider()
 
+        ProgressSection()
+        HorizontalDivider()
+
         WeightsSection(
             weights = state.weights,
             history = state.adjustments,

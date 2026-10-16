@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
       Used only by the optional AI layer. Every core function - building the
@@ -35,6 +36,22 @@
       an explanation rather than silently, and the app stays usable if refused.
     -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!--
+      Optional progress links. AnkiDroid's public API (due-card counts) and
+      Android usage history (minutes spent in Duolingo / AnkiDroid). Usage
+      access is granted by hand in system Settings; everything works without
+      either.
+    -->
+    <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Package visibility (Android 11+) so AnkiDroid can be detected. -->
+    <queries>
+        <package android:name="com.ichi2.anki" />
+    </queries>
 
     <application
         android:name=".MendApplication"

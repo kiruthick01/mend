@@ -28,6 +28,8 @@ data class NowNext(
     val currentSlot: TimeInterval? = null,
     val nextTitle: String? = null,
     val nextStartsAt: String? = null,
+    /** Connected-app status for the widget, e.g. "Duolingo · 12-day streak". */
+    val progressLine: String? = null,
 ) {
     val isEmpty: Boolean get() = currentTitle == null && nextTitle == null
 
@@ -69,7 +71,7 @@ data class NowNext(
                 date = now.toLocalDate(),
                 staticBlocks = app.staticLayerRepository.observeStaticBlocks().first(),
                 habits = app.staticLayerRepository.observeHabits().first(),
-                goals = app.goalRepository.observeGoals().first(),
+                goals = app.goalRepository.observeGoalsForScheduling().first(),
                 protectedRecovery = listOfNotNull(
                     app.recoveryRepository.observeSleepBlock().first(),
                 ),
@@ -95,6 +97,7 @@ data class NowNext(
                 currentSlot = work?.interval,
                 nextTitle = next?.title(),
                 nextStartsAt = next?.interval?.start?.format(TIME),
+                progressLine = com.mend.app.progress.progressLineFor(app, now.toLocalDate()),
             )
         } catch (e: Exception) {
             Empty
@@ -116,7 +119,7 @@ data class NowNext(
                 date = now.toLocalDate(),
                 staticBlocks = app.staticLayerRepository.observeStaticBlocks().first(),
                 habits = app.staticLayerRepository.observeHabits().first(),
-                goals = app.goalRepository.observeGoals().first(),
+                goals = app.goalRepository.observeGoalsForScheduling().first(),
                 protectedRecovery = listOfNotNull(
                     app.recoveryRepository.observeSleepBlock().first(),
                 ),

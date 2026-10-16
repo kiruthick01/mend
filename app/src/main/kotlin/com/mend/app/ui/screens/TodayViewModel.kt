@@ -94,6 +94,8 @@ class TodayViewModel(
         val blocks: List<StaticBlock>,
         val habits: List<Habit>,
         val goals: List<GoalWithLessons>,
+        /** Goals as the scheduler sees them. Never written back: durations may be adjusted. */
+        val scheduled: List<GoalWithLessons>,
         val sleepBlock: ProtectedRecovery?,
         val proposal: ReshuffleProposalEntity?,
     )
@@ -101,11 +103,13 @@ class TodayViewModel(
     private val inputs = combine(
         staticLayer.observeStaticBlocks(),
         staticLayer.observeHabits(),
-        goals.observeGoals(),
+        combine(goals.observeGoals(), goals.observeGoalsForScheduling()) { stored, scheduled ->
+            stored to scheduled
+        },
         recovery.observeSleepBlock(),
         reshuffle.observeOutstanding(),
-    ) { blocks, habits, goalList, sleepBlock, proposal ->
-        Inputs(blocks, habits, goalList, sleepBlock, proposal)
+    ) { blocks, habits, (goalList, scheduled), sleepBlock, proposal ->
+        Inputs(blocks, habits, goalList, scheduled, sleepBlock, proposal)
     }
 
     val state: StateFlow<TodayUiState> =
@@ -149,7 +153,7 @@ class TodayViewModel(
             date = date,
             staticBlocks = input.blocks,
             habits = input.habits,
-            goals = input.goals,
+            goals = input.scheduled,
             protectedRecovery = recoveryBlocks,
             weights = weights,
             adherenceLog = log,
@@ -163,7 +167,7 @@ class TodayViewModel(
             interrupt = detectInterrupt(
                 now = instant,
                 schedule = schedule,
-                goals = input.goals,
+                goals = input.scheduled,
                 staticBlocks = input.blocks,
                 habits = input.habits,
                 protectedRecovery = recoveryBlocks,
@@ -376,7 +380,7 @@ class TodayViewModel(
                         date = reshuffle.earliestEffectiveDate(instant),
                         staticBlocks = input.blocks,
                         habits = input.habits,
-                        goals = input.goals,
+                        goals = input.scheduled,
                         protectedRecovery = listOfNotNull(input.sleepBlock),
                     ),
                 )

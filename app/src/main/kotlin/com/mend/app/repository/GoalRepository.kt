@@ -23,6 +23,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
+/** Reshapes goals just before scheduling, without writing anything back. */
+interface SchedulingAdjuster {
+    /** Emits whenever the adjustment's inputs change and a day should be rebuilt. */
+    val changes: Flow<*>
+
+    fun adjust(goals: List<GoalWithLessons>, now: java.time.LocalDateTime): List<GoalWithLessons>
+}
+
 /** A goal together with its assembled lesson hierarchy. */
 data class GoalWithLessons(
     val goal: Goal,
@@ -59,7 +67,21 @@ class GoalRepository(
      * feature from Phase 5 onward reads.
      */
     private val adherence: AdherenceRepository? = null,
+    private val adjuster: SchedulingAdjuster? = null,
 ) {
+
+    /**
+     * Goals as the scheduler should see them: stored goals, passed through any
+     * [SchedulingAdjuster]. Use this wherever a day is built; use [observeGoals]
+     * wherever goals are shown or edited, so estimates on screen stay the ones
+     * the user typed.
+     */
+    fun observeGoalsForScheduling(): Flow<List<GoalWithLessons>> {
+        val adjuster = adjuster ?: return observeGoals()
+        return combine(observeGoals(), adjuster.changes.map { }) { goals, _ ->
+            adjuster.adjust(goals, java.time.LocalDateTime.now())
+        }
+    }
 
     fun observeGoals(): Flow<List<GoalWithLessons>> =
         combine(

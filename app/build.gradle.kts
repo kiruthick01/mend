@@ -80,6 +80,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // android.jar's org.json is a stub on the JVM; the real one is needed to test parsing.
+    testImplementation("org.json:json:20240303")
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -173,6 +173,18 @@ private fun WidgetBody(snapshot: NowNext) {
                 ),
             )
         }
+
+        snapshot.progressLine?.let { line ->
+            Spacer(modifier = GlanceModifier.height(6.dp))
+            Text(
+                text = line,
+                maxLines = 1,
+                style = TextStyle(
+                    color = GlanceTheme.colors.primary,
+                    fontSize = 12.sp(),
+                ),
+            )
+        }
     }
 }
 

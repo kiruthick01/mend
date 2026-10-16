@@ -120,6 +120,7 @@ fun GoalDetailScreen(goalId: String, onBack: () -> Unit) {
             if (item.pace.isNotEmpty()) {
                 item { PaceSection(item.pace) }
             }
+            item { GoalProgressSection(goalId) }
             item { HorizontalDivider() }
 
             item.lessons.forEach { lesson ->

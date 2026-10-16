@@ -28,6 +28,12 @@ class MendApplication : Application() {
         // an alarm that fires into a cold process.
         MendNotifications.ensureChannels(this)
         DailyReplanWorker.schedule(this)
+        com.mend.app.progress.ProgressSyncWorker.schedule(this)
+        com.mend.app.progress.StreakGuardWorker.schedule(this)
+    }
+
+    val progressLinks: com.mend.app.progress.ProgressLinkStore by lazy {
+        com.mend.app.progress.ProgressLinkStore(this)
     }
 
     val alarmState: AlarmState by lazy { AlarmState(this) }
@@ -114,6 +120,7 @@ class MendApplication : Application() {
             subTaskDao = database.subTaskDao(),
             reshuffle = reshuffleRepository,
             adherence = adherenceRepository,
+            adjuster = com.mend.app.progress.ProgressAdjuster(progressLinks),
         )
     }
 }

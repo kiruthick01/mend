@@ -1,15 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- "mend." in a monospace face, drawn as paths: a vector drawable cannot use a font. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#D8F3DC"
-        android:pathData="M54,30 m-20,0 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0 M54,30 L54,50" />
-    <path
-        android:strokeColor="#D8F3DC"
-        android:strokeWidth="4"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
         android:strokeLineCap="round"
-        android:pathData="M38,54 L54,70 L74,42" />
+        android:strokeLineJoin="round"
+        android:pathData="M28.2,65 V49 M28.2,51 C28.2,48 32,48 32,51 V65 M32,51 C32,48 35.8,48 35.8,51 V65" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M39.8,57 H47.4 C47.4,47 39.8,47 39.8,57 C39.8,67 47.4,66 47.4,63.5" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M51.4,65 V49 M51.4,52 C51.4,48 59,48 59,52 V65" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M70.6,43 V65 M70.6,57 C70.6,49 63,49 63,57 C63,65 70.6,65 70.6,57" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M74.6,64 a1.5,1.5 0 1,0 3.0,0 a1.5,1.5 0 1,0 -3.0,0" />
 </vector>

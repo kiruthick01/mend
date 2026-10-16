@@ -129,7 +129,7 @@ class AlarmCoordinator(
             date = now.toLocalDate(),
             staticBlocks = staticLayer.observeStaticBlocks().first(),
             habits = staticLayer.observeHabits().first(),
-            goals = goals.observeGoals().first(),
+            goals = goals.observeGoalsForScheduling().first(),
             protectedRecovery = listOfNotNull(sleepBlock),
             weights = weights.current(),
         )
