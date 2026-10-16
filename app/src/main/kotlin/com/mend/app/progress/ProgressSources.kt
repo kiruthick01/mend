@@ -97,28 +97,78 @@ class AnkiReader(private val context: Context) {
     fun hasPermission(): Boolean =
         context.checkSelfPermission(PERMISSION) == PackageManager.PERMISSION_GRANTED
 
-    /** Deck name to cards due now (learning + review), or null when unreadable. */
-    fun deckDue(): Map<String, Int>? {
+    /** Every deck as name to id, or null when AnkiDroid cannot be read. */
+    fun deckIds(): Map<String, Long>? {
         if (!isInstalled() || !hasPermission()) return null
         return runCatching {
-            val result = linkedMapOf<String, Int>()
+            val result = linkedMapOf<String, Long>()
             context.contentResolver.query(
                 Uri.parse("content://$AUTHORITY/decks"),
-                arrayOf("deck_name", "deck_counts"),
+                arrayOf("deck_id", "deck_name"),
                 null,
                 null,
                 null,
             )?.use { c ->
+                val idAt = c.getColumnIndex("deck_id")
+                val nameAt = c.getColumnIndex("deck_name")
+                if (idAt < 0 || nameAt < 0) return@use
                 while (c.moveToNext()) {
-                    val due = ProgressEvidence.ankiDue(c.getString(1)) ?: continue
-                    result[c.getString(0)] = due
+                    val name = c.getString(nameAt) ?: continue
+                    result[name] = c.getLong(idAt)
                 }
             }
             result
-        }.getOrNull()
+        }.onFailure { android.util.Log.w(TAG, "AnkiDroid deck list failed", it) }.getOrNull()
     }
 
+    /**
+     * Cards left to study now (new within today's limit, learning and review)
+     * for the named decks.
+     *
+     * AnkiDroid 2.25 no longer fills `deck_counts`, so the count is the number
+     * of cards its scheduler would hand out for the deck, capped at
+     * [MAX_COUNTED]. Asking for a deck's schedule selects that deck inside
+     * AnkiDroid, so the user's own selection is restored afterwards.
+     */
+    fun dueFor(names: Collection<String>): Map<String, Int>? {
+        val ids = deckIds() ?: return null
+        return runCatching {
+            val original = selectedId()
+            val result = names.mapNotNull { name ->
+                val id = ids[name] ?: return@mapNotNull null
+                val due = context.contentResolver.query(
+                    Uri.parse("content://$AUTHORITY/schedule"),
+                    null,
+                    "limit=?,deckID=?",
+                    arrayOf(MAX_COUNTED.toString(), id.toString()),
+                    null,
+                )?.use { it.count }
+                due?.let { name to it }
+            }.toMap()
+            if (original != null) {
+                context.contentResolver.update(
+                    Uri.parse("content://$AUTHORITY/selected_deck"),
+                    android.content.ContentValues().apply { put("deck_id", original) },
+                    null,
+                    null,
+                )
+            }
+            result
+        }.onFailure { android.util.Log.w(TAG, "AnkiDroid counts failed", it) }.getOrNull()
+    }
+
+    private fun selectedId(): Long? =
+        context.contentResolver.query(
+            Uri.parse("content://$AUTHORITY/selected_deck"),
+            arrayOf("deck_id"),
+            null,
+            null,
+            null,
+        )?.use { c -> if (c.moveToFirst()) c.getLong(0) else null }
+
     companion object {
+        private const val TAG = "MendProgress"
+        private const val MAX_COUNTED = 999
         const val PERMISSION = "com.ichi2.anki.permission.READ_WRITE_DATABASE"
         private const val AUTHORITY = "com.ichi2.anki.flashcards"
     }

@@ -57,12 +57,13 @@ class ProgressSync(private val app: MendApplication) {
         now: LocalDateTime = LocalDateTime.now(),
     ): List<LinkStatus> {
         val goals = app.goalRepository.observeGoals().first()
+        // A link to a deleted goal has nothing to tick off and would linger forever.
+        val goalIds = goals.map { it.goal.id }.toSet()
+        store.all().filter { it.goalId !in goalIds }.forEach(store::remove)
         val links = store.all()
-        val ankiDue = if (links.any { it.kind == ProgressKind.ANKI && it.target.isNotBlank() }) {
-            anki.deckDue()
-        } else {
-            null
-        }
+        val ankiDecks = links.filter { it.kind == ProgressKind.ANKI && it.target.isNotBlank() }
+            .map { it.target }
+        val ankiDue = if (ankiDecks.isNotEmpty()) anki.dueFor(ankiDecks) else null
 
         val statuses = links.map { link ->
             val reading = read(link, today, ankiDue)

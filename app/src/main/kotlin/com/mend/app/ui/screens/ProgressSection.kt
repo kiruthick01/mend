@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -180,7 +183,7 @@ private fun AddLinkDialog(
         ankiGranted = it
     }
     LaunchedEffect(kind, ankiGranted) {
-        decks = if (kind == ProgressKind.ANKI) anki.deckDue()?.keys?.toList().orEmpty() else emptyList()
+        decks = if (kind == ProgressKind.ANKI) anki.deckIds()?.keys?.toList().orEmpty() else emptyList()
     }
 
     AlertDialog(
@@ -216,12 +219,19 @@ private fun AddLinkDialog(
                             Text("Allow AnkiDroid access")
                         }
                     }
-                    decks.forEach { deck ->
-                        FilterChip(
-                            selected = deck == target,
-                            onClick = { target = if (deck == target) "" else deck },
-                            label = { Text(deck) },
-                        )
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 220.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        decks.forEach { deck ->
+                            FilterChip(
+                                selected = deck == target,
+                                onClick = { target = if (deck == target) "" else deck },
+                                label = { Text(deck) },
+                            )
+                        }
                     }
                 }
                 if (target.isBlank() && !usage.hasAccess()) {
